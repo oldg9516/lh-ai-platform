@@ -1,9 +1,10 @@
 """FastAPI routes for the AI Engine.
 
-POST /api/chat — main pipeline: safety check → classify → generate → post-check → save.
+POST /api/chat — main pipeline: safety → classify+name → generate → cancel link → assemble → post-check → save.
 GET  /api/health — service health check.
 """
 
+import asyncio
 import time
 import uuid
 
@@ -14,8 +15,11 @@ import structlog
 from config import settings
 from agents.config import CATEGORY_CONFIG
 from agents.router import classify_message
+from agents.name_extractor import extract_customer_name
 from agents.support import create_support_agent
+from agents.response_assembler import assemble_response
 from guardrails.safety import check_red_lines, check_subscription_safety
+from tools.retention import generate_cancel_link, inject_cancel_link
 from database.queries import save_session, save_message
 
 logger = structlog.get_logger()
@@ -85,7 +89,8 @@ async def health_check():
 async def chat(request: ChatRequest):
     """Process a customer message through the AI pipeline.
 
-    Pipeline: red line check → classify → support agent → post-safety → save → respond.
+    Pipeline: red line → classify+name (parallel) → support agent → cancel link
+              → assemble → post-safety → save → respond.
     """
     start_time = time.time()
     session_id = request.session_id or f"sess_{uuid.uuid4().hex[:12]}"
@@ -112,13 +117,19 @@ async def chat(request: ChatRequest):
             },
         )
 
-    # Step 2: Classify message
-    classification = await classify_message(request.message)
+    # Step 2: Classify message + extract customer name (parallel)
+    contact_name = request.contact.name if request.contact else None
+    classification, customer_name = await asyncio.gather(
+        classify_message(request.message),
+        extract_customer_name(request.message, contact_name),
+    )
 
     # Step 3: Generate response with Support Agent
+    # Include customer name in context for personalization
+    agent_input = f"[Customer Name: {customer_name}]\n\n{request.message}"
     try:
         agent = create_support_agent(classification.primary)
-        response = await agent.arun(request.message)
+        response = await agent.arun(agent_input)
         ai_response = str(response.content)
     except Exception as e:
         logger.error("support_agent_error", error=str(e), category=classification.primary)
@@ -133,6 +144,31 @@ async def chat(request: ChatRequest):
             confidence="low",
             metadata={"error": str(e)},
         )
+
+    # Step 3.5: Cancel link injection (retention categories only)
+    is_retention = classification.primary in (
+        "retention_primary_request",
+        "retention_repeated_request",
+    )
+    if is_retention:
+        customer_email = (
+            request.contact.email if request.contact else classification.email
+        )
+        if customer_email:
+            cancel_url = generate_cancel_link(
+                subscription_id="pending",  # real ID comes from tools in Phase 3
+                customer_email=customer_email,
+            )
+            if cancel_url:
+                ai_response = inject_cancel_link(ai_response, cancel_url)
+
+    # Step 3.6: Assemble response (greeting + opener + body + closer + sign-off)
+    ai_response = assemble_response(
+        raw_response=ai_response,
+        customer_name=customer_name,
+        category=classification.primary,
+        session_id=session_id,
+    )
 
     # Step 4: Post-processing safety check
     safety_check = check_subscription_safety(ai_response)
@@ -155,7 +191,7 @@ async def chat(request: ChatRequest):
             "conversation_id": request.conversation_id,
             "channel": (request.metadata or {}).get("channel", "widget"),
             "customer_email": request.contact.email if request.contact else classification.email,
-            "customer_name": request.contact.name if request.contact else None,
+            "customer_name": customer_name,
             "primary_category": classification.primary,
             "secondary_category": classification.secondary,
             "urgency": classification.urgency,
@@ -194,5 +230,6 @@ async def chat(request: ChatRequest):
             "processing_time_ms": processing_time_ms,
             "is_outstanding": False,
             "secondary_category": classification.secondary,
+            "customer_name": customer_name,
         },
     )

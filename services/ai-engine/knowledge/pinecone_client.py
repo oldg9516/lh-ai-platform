@@ -21,7 +21,7 @@ def create_knowledge(namespace: str) -> Knowledge:
     """
     vector_db = PineconeDb(
         name=settings.pinecone_index,
-        dimension=1536,
+        dimension=settings.pinecone_dimension,
         metric="cosine",
         spec={"serverless": {"cloud": "aws", "region": "us-east-1"}},
         api_key=settings.pinecone_api_key,

@@ -77,6 +77,18 @@ from api.routes import router as api_router  # noqa: E402
 
 app.include_router(api_router, prefix="/api")
 
+# Serve test chat UI
+from pathlib import Path  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+@app.get("/chat")
+async def chat_ui():
+    """Serve the test chat interface."""
+    return FileResponse(STATIC_DIR / "chat.html")
+
 if __name__ == "__main__":
     import uvicorn
 

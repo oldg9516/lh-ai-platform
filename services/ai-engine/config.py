@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # Pinecone
     pinecone_api_key: str = ""
     pinecone_index: str = "support-examples"
+    pinecone_dimension: int = 1024  # text-embedding-3-large
 
     # Langfuse (Observability)
     langfuse_public_key: str = "pk-lf-local"

@@ -8,85 +8,101 @@ AI-powered live chat platform for Lev Haolam customer support. Replaces email-on
 
 **Stack:** Agno AgentOS (Python 3.12) + Chatwoot (Omnichannel) + Langfuse (Observability & Eval) + PostgreSQL (Supabase) + Pinecone + Docker Compose
 
-**Current Phase:** Phase 0 (Foundation — AI Engine core). Core source code implemented.
+**Current Phase:** Phase 0 complete (Foundation — AI Engine core). All 15 source files implemented, 10 containers healthy, full pipeline working. See `PROGRESS.md` for phase tracking.
 
 ## Commands
 
 ```bash
-# Development (hot reload)
+# Start all services (production)
+docker compose up -d
+
+# Development with hot reload (ai-engine only)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up ai-engine
 
-# Production
-docker compose up -d
+# Rebuild after requirements.txt or Dockerfile changes
+docker compose build ai-engine
 
 # Logs
 docker compose logs -f ai-engine
 
-# Run all tests
-docker compose exec ai-engine pytest tests/
-
-# Run a single test
-docker compose exec ai-engine pytest tests/test_router.py -v
-
-# Run database migrations
-docker compose exec ai-engine python -m shared.database.migrate
-
 # Health check
 curl http://localhost:8000/api/health
 
+# Test chat UI
+open http://localhost:8000/chat
+
 # Langfuse UI (observability + eval)
 open http://localhost:3100
+
+# Import data into local Supabase
+python database/import.py             # ai_answerer_instructions
+python database/import_threads.py     # support_threads_data
 ```
+
+**Note:** No tests/ directory exists yet — test infrastructure is Phase 1. When tests are added, run via: `docker compose exec ai-engine pytest tests/ -v`
 
 ## Architecture
 
-### Two-Layer Agent System
+### Request Pipeline (api/routes.py)
+
+This is the actual execution flow for every incoming message:
 
 ```
-Customer Message
+POST /api/chat
        │
        ▼
-┌─────────────────┐
-│  Router Agent    │  GPT-5.1, no reasoning, ~50ms
-│  (classify)      │  Output: { primary, secondary, urgency, email }
-└────────┬────────┘
-         │ category
-         ▼
-┌─────────────────┐
-│  Support Agent   │  Dynamic factory: model/tools/knowledge per category
-│  (respond+act)   │  CATEGORY_CONFIG drives everything
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Outstanding     │  Detects red flags via rules + Pinecone similarity
-│  Detection       │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Eval Gate       │  Decides: send / draft / escalate
-│                  │  Checks: safety, tone, accuracy, confidence
-└─────────────────┘
+1. Pre-safety check (check_red_lines)
+   - Regex patterns: death threats, legal threats, bank disputes, self-harm
+   - If flagged → immediate escalate response, skip everything else
+       │
+       ▼
+2. Router Agent (classify_message)
+   - GPT-5.1, no reasoning, structured output → RouterOutput
+   - Returns: primary category, secondary, urgency, extracted email
+       │
+       ▼
+3. Support Agent (create_support_agent → agent.arun)
+   - Factory creates agent dynamically from CATEGORY_CONFIG
+   - Configures: model, instructions (from DB), Pinecone knowledge namespace
+   - If agent fails → escalate response
+       │
+       ▼
+4. Post-safety check (check_subscription_safety)
+   - Blocks: confirmed cancellation, confirmed pause, confirmed refund
+   - If unsafe → override decision to "draft"
+       │
+       ▼
+5. Save to database (save_session, save_message)
+   - Non-blocking: errors logged but don't fail the response
+       │
+       ▼
+6. Return ChatResponse (response, category, decision, confidence)
 ```
 
-The Support Agent is not 10 separate agents — it's a single factory function (`create_support_agent(category)`) that dynamically configures model, reasoning effort, tools, Pinecone namespace, and instructions based on `CATEGORY_CONFIG`.
+**Not yet implemented** (future phases): Outstanding Detection (Pinecone similarity), Eval Gate (send/draft/escalate scoring), action tools with HITL.
 
-### Service Architecture
+### Support Agent Factory
 
-| Service | Port | Phase | Technology |
-|---------|------|-------|------------|
-| AI Engine | 8000 | 0 | Agno AgentOS + FastAPI |
-| Langfuse | 3100 | 0 | Observability, tracing, eval, playground |
-| Chatwoot | 3000 | 2 | Omnichannel hub |
-| n8n | 5678 | existing | Email pipeline (continues in parallel) |
+The Support Agent is **not** 10 separate agents — it's a single factory function (`create_support_agent(category)` in `agents/support.py`) that dynamically configures model, reasoning effort, tools, Pinecone namespace, and instructions based on `CATEGORY_CONFIG` (defined in `agents/config.py`).
 
-### Model Selection per Category
+**10 categories:** shipping_or_delivery_question, payment_question, frequency_change_request, skip_or_pause_request, recipient_or_address_change, customization_request, damaged_or_leaking_item_report, gratitude, retention_primary_request, retention_repeated_request
 
-- **GPT-5.1** (none/low reasoning): shipping, payment, frequency, skip/pause, address, customization, damage, gratitude — ~80% of requests
-- **Claude Sonnet 4.5** (extended reasoning): retention_primary, retention_repeated — complex persuasion cases
+**Model selection:** Currently all categories use GPT-5.1. Retention categories have a TODO to switch to Claude Sonnet 4.5 when available.
 
-This split saves ~60-70% cost vs using one model for everything.
+### Docker Services (10 containers)
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| ai-engine | 8000 | FastAPI + Agno agents |
+| supabase-db | 54322 | PostgreSQL 17 |
+| supabase-rest | — | PostgREST API adapter |
+| supabase-api | 54321 | Nginx reverse proxy for Supabase |
+| langfuse-web | 3100 | Observability UI |
+| langfuse-worker | — | Async job processor |
+| langfuse-postgres | — | Langfuse database |
+| langfuse-clickhouse | — | Tracing analytics backend |
+| langfuse-redis | — | Langfuse cache |
+| langfuse-minio | — | S3-compatible object storage |
 
 ### Database: Dual Pipeline
 
@@ -94,13 +110,13 @@ Both the existing n8n email pipeline and the new Agno chat platform:
 - **Read** prompts from `ai_answerer_instructions` (instruction_1..10, outstanding_rules, outstanding_hard_rules)
 - **Write** eval results to `eval_results`
 
-The new system adds 5 tables (`chat_sessions`, `chat_messages`, `agent_traces`, `tool_executions`, `learning_records`) and does NOT write to `support_threads_data` or `support_dialogs` (email-only).
+The new system adds tables: `chat_sessions`, `chat_messages`, `agent_traces`, `tool_executions`, `learning_records`. It does NOT write to `support_threads_data` or `support_dialogs` (email-only tables).
 
-Connection is via **supabase-py** (REST API) using `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`.
+Connection: **supabase-py** (REST API) via `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Database schema auto-initializes from SQL files in `services/supabase/init/` (00-roles, 01-schema, 02-permissions, 03-views).
 
-### Pinecone Namespaces
+### Pinecone
 
-Index: `support-examples`. Namespaces: `outstanding-cases`, `faq`, `retention`, `shipping`, `damage`, `subscription`, `customization`, `payment`, `gratitude`.
+Index: `support-examples`. Per-category namespaces: `outstanding-cases`, `faq`, `retention`, `shipping`, `damage`, `subscription`, `customization`, `payment`, `gratitude`. Dimension: 1536, cosine metric, hybrid search enabled.
 
 ## Critical Safety Rules (NEVER VIOLATE)
 
@@ -112,20 +128,31 @@ Index: `support-examples`. Namespaces: `outstanding-cases`, `faq`, `retention`, 
 6. **Refunds** — NEVER without human approval
 7. **Sensitive data** — never in logs
 
+These are enforced in two places: `guardrails/safety.py` (regex-based pre/post checks) and `agents/instructions.py` (GLOBAL_SAFETY_RULES injected into every agent's instructions).
+
 ## Coding Conventions
 
 - **Python 3.12**, type hints everywhere
 - **Pydantic** for all data models (input/output)
-- **Async** for FastAPI routes, **sync** for database queries (supabase-py)
+- **Async** for FastAPI routes, **sync** for database queries (supabase-py is sync-only)
 - **structlog** with JSON output for logging
 - **pydantic-settings** for env var config
 - Custom exceptions; never bare `except:`
 - Google-style docstrings
 
-### Agno Patterns (verified against SDK 2.4.8)
+### Import Paths
+
+The Dockerfile copies `services/ai-engine/` to `/app` inside the container. All imports are relative to that root:
+```python
+from config import settings          # NOT from services.ai_engine.config
+from agents.router import classify_message
+from database.connection import get_client
+from guardrails.safety import check_red_lines
+```
+
+### Agno SDK Patterns (verified against SDK 2.4.8)
 
 ```python
-# Agent creation — use OpenAIChat for no-reasoning, Claude for retention
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.models.anthropic import Claude
@@ -139,7 +166,7 @@ vector_db = PineconeDb(
     metric="cosine",
     spec={"serverless": {"cloud": "aws", "region": "us-east-1"}},
     api_key=settings.pinecone_api_key,
-    namespace="shipping",  # per-category namespace
+    namespace="shipping",
     use_hybrid_search=True,
 )
 knowledge = Knowledge(vector_db=vector_db)
@@ -152,24 +179,17 @@ agent = Agent(
     search_knowledge=True,
 )
 
-# Structured output — use output_schema parameter (NOT response_model)
-from pydantic import BaseModel
-class RouterOutput(BaseModel):
-    primary: str
-    urgency: str
-
+# Structured output — use output_schema (NOT response_model)
 agent = Agent(model=OpenAIChat(id="gpt-5.1"), output_schema=RouterOutput)
+
+# Run agent — async
+response = await agent.arun(message)  # response.content has the text
 
 # Tool with HITL approval (Phase 2+)
 from agno.tools import tool
-
 @tool(requires_confirmation=True)  # NOT needs_approval
-def pause_subscription(subscription_id: str) -> str:
-    """Pause customer subscription. Requires customer confirmation."""
-    ...
+def pause_subscription(subscription_id: str) -> str: ...
 ```
-
-### Custom Guardrails
 
 Agno doesn't have a generic custom guardrail base class. Safety checks are implemented as pre/post-processing functions called explicitly in the pipeline (see `guardrails/safety.py`).
 
@@ -177,45 +197,14 @@ Agno doesn't have a generic custom guardrail base class. Safety checks are imple
 
 Required in `.env` (see `.env.example`):
 ```
-OPENAI_API_KEY              # GPT-5.1
-ANTHROPIC_API_KEY           # Claude Sonnet 4.5 (retention only, optional for now)
-SUPABASE_URL                # Supabase project URL
-SUPABASE_SERVICE_ROLE_KEY   # Supabase service role key (bypasses RLS)
-PINECONE_API_KEY            # Vector store
-PINECONE_INDEX=support-examples
-LANGFUSE_PUBLIC_KEY         # Langfuse (auto-created on first boot)
-LANGFUSE_SECRET_KEY         # Langfuse
-LANGFUSE_HOST               # http://langfuse-web:3000
-CANCEL_LINK_PASSWORD        # AES-256-GCM for cancel link encryption
+OPENAI_API_KEY, ANTHROPIC_API_KEY (optional for now)
+SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+PINECONE_API_KEY, PINECONE_INDEX=support-examples
+LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST
+CANCEL_LINK_PASSWORD
 ```
 
 Phase 2+ adds: `CHATWOOT_URL`, `CHATWOOT_API_TOKEN`, `CHATWOOT_ACCOUNT_ID`, `N8N_URL`, `N8N_API_KEY`
-
-### Observability: Langfuse (self-hosted)
-
-Langfuse replaces both Agno Control Plane (paid SaaS) and Agenta (eval lab). Self-hosted via Docker Compose (6 services: web, worker, postgres, clickhouse, redis, minio). All agent calls are automatically traced via `AgnoInstrumentor` + OpenTelemetry.
-
-UI: `http://localhost:3100` — tracing, playground, evaluations, prompt management, cost tracking.
-
-## Phase 0 File Creation Order
-
-Create files strictly in this order (each step: create → verify imports → ensure Docker builds):
-
-1. `.env.example` + `.gitignore`
-2. `docker-compose.yml` + `docker-compose.dev.yml`
-3. `services/ai-engine/requirements.txt`
-4. `services/ai-engine/Dockerfile`
-5. `services/ai-engine/config.py`
-6. `services/ai-engine/database/connection.py`
-7. `services/ai-engine/database/queries.py`
-8. `services/ai-engine/knowledge/pinecone_client.py`
-9. `services/ai-engine/guardrails/safety.py`
-10. `services/ai-engine/agents/router.py`
-11. `services/ai-engine/agents/config.py`
-12. `services/ai-engine/agents/support.py`
-13. `services/ai-engine/agents/instructions.py`
-14. `services/ai-engine/main.py`
-15. `services/ai-engine/api/routes.py`
 
 ## Reference Documents
 
