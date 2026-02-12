@@ -1,6 +1,6 @@
 """Lev Haolam AI Support Engine — Entry Point.
 
-FastAPI application with lifespan management for database pool.
+FastAPI application with lifespan management.
 Includes API routes on /api prefix.
 """
 
@@ -10,7 +10,6 @@ import structlog
 from fastapi import FastAPI
 
 from config import settings
-from database.connection import init_pool, close_pool
 
 structlog.configure(
     processors=[
@@ -26,12 +25,7 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("starting_ai_engine", version=settings.app_version)
-    try:
-        init_pool()
-    except Exception as e:
-        logger.error("database_pool_init_failed", error=str(e))
     yield
-    close_pool()
     logger.info("stopped_ai_engine")
 
 

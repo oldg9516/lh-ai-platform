@@ -63,11 +63,9 @@ async def health_check():
     """Service health check."""
     db_status = "connected"
     try:
-        from database.connection import get_connection
+        from database.connection import get_client
 
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1")
+        get_client().table("ai_answerer_instructions").select("id").limit(1).execute()
     except Exception:
         db_status = "disconnected"
 

@@ -5,8 +5,8 @@ agno[openai,anthropic,pinecone,postgres]
 fastapi[standard]
 uvicorn[standard]
 
-# Database
-psycopg2-binary
+# Database (Supabase REST API)
+supabase
 
 # Configuration
 pydantic-settings

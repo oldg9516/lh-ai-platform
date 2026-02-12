@@ -1,65 +1,34 @@
-"""PostgreSQL connection pool via psycopg2.
+"""Supabase client singleton.
 
-Sync connection pool for Supabase PostgreSQL.
-Uses ThreadedConnectionPool for thread-safe access.
+Provides a shared Supabase client instance for REST API access.
+Uses service_role_key to bypass RLS (server-side only).
 """
 
-from contextlib import contextmanager
-from typing import Generator
-
-import psycopg2
-from psycopg2 import pool
 import structlog
+from supabase import create_client, Client
 
 from config import settings
 
 logger = structlog.get_logger()
 
-_pool: pool.ThreadedConnectionPool | None = None
+_client: Client | None = None
 
 
-def init_pool() -> None:
-    """Initialize the database connection pool."""
-    global _pool
-    _pool = pool.ThreadedConnectionPool(
-        minconn=2,
-        maxconn=10,
-        host=settings.db_host,
-        port=settings.db_port,
-        dbname=settings.db_name,
-        user=settings.db_user,
-        password=settings.db_pass,
-        sslmode="require",
-        connect_timeout=10,
-    )
-    logger.info("database_pool_initialized", host=settings.db_host)
+def get_client() -> Client:
+    """Get or create the Supabase client singleton.
 
+    Returns:
+        Supabase Client instance.
 
-def close_pool() -> None:
-    """Close all connections in the pool."""
-    global _pool
-    if _pool:
-        _pool.closeall()
-        _pool = None
-        logger.info("database_pool_closed")
-
-
-@contextmanager
-def get_connection() -> Generator:
-    """Get a connection from the pool.
-
-    Yields:
-        psycopg2 connection object. Auto-commits on success, rolls back on error.
+    Raises:
+        RuntimeError: If SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set.
     """
-    if _pool is None:
-        raise RuntimeError("Database pool not initialized. Call init_pool() first.")
-
-    conn = _pool.getconn()
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _pool.putconn(conn)
+    global _client
+    if _client is None:
+        if not settings.supabase_url or not settings.supabase_service_role_key:
+            raise RuntimeError(
+                "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set."
+            )
+        _client = create_client(settings.supabase_url, settings.supabase_service_role_key)
+        logger.info("supabase_client_initialized", url=settings.supabase_url)
+    return _client

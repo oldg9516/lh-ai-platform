@@ -16,12 +16,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 
-    # Database (Supabase PostgreSQL)
-    db_host: str = "localhost"
-    db_port: int = 5432
-    db_name: str = "postgres"
-    db_user: str = "postgres"
-    db_pass: str = ""
+    # Database (Supabase REST API)
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
 
     # Pinecone
     pinecone_api_key: str = ""
