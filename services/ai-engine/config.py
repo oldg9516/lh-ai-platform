@@ -24,9 +24,10 @@ class Settings(BaseSettings):
     pinecone_api_key: str = ""
     pinecone_index: str = "support-examples"
 
-    # Agno Control Plane
-    agno_api_key: str = ""
-    agno_telemetry: bool = False
+    # Langfuse (Observability)
+    langfuse_public_key: str = "pk-lf-local"
+    langfuse_secret_key: str = "sk-lf-local"
+    langfuse_host: str = "http://langfuse-web:3000"
 
     # Encryption
     cancel_link_password: str = ""

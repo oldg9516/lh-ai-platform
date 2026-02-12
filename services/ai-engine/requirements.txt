@@ -23,6 +23,12 @@ cryptography
 # Retry logic
 tenacity
 
+# Observability (Langfuse + Agno instrumentation)
+langfuse
+openinference-instrumentation-agno
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-http
+
 # Testing
 pytest
 pytest-asyncio
