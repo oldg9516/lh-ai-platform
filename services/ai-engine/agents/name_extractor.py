@@ -2,7 +2,7 @@
 
 Extracts the customer's first name for personalized responses.
 Fast path: use contact_name directly if available.
-LLM path: extract from message signature via GPT-5.1-nano.
+LLM path: extract from message signature via GPT-5-mini.
 """
 
 import re
@@ -64,7 +64,7 @@ async def extract_customer_name(
     try:
         agent = Agent(
             name="Name Extractor",
-            model=OpenAIChat(id="gpt-4.1-nano"),
+            model=OpenAIChat(id="gpt-5-mini"),
             instructions=EXTRACTOR_INSTRUCTIONS,
             output_schema=NameOutput,
             markdown=False,
