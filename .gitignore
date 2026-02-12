@@ -40,3 +40,7 @@ tmp/
 *.db
 *.sqlite3
 .agents
+
+# Data exports (production data — do not commit)
+database/*.json
+database/*.csv

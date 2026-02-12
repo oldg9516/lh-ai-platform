@@ -17,7 +17,7 @@ def get_instructions(category: str) -> dict[str, Any] | None:
     """Load agent instructions from ai_answerer_instructions table.
 
     Args:
-        category: The name to look up (e.g., 'shipping_or_delivery_question').
+        category: The category type to look up (e.g., 'shipping_or_delivery_question').
 
     Returns:
         Dict with instruction_1..10, outstanding_rules, etc. or None if not found.
@@ -26,7 +26,7 @@ def get_instructions(category: str) -> dict[str, Any] | None:
         get_client()
         .table("ai_answerer_instructions")
         .select("*")
-        .eq("name", category)
+        .eq("type", category)
         .eq("status", "enabled")
         .order("created_at", desc=True)
         .limit(1)
@@ -35,20 +35,19 @@ def get_instructions(category: str) -> dict[str, Any] | None:
     return response.data[0] if response.data else None
 
 
-def get_customer(email: str) -> dict[str, Any] | None:
-    """Look up customer info by email from existing support data.
-
-    Args:
-        email: Customer email address.
+def get_global_rules() -> dict[str, Any] | None:
+    """Load global rules from ai_answerer_instructions table.
 
     Returns:
-        Dict with customer_email, customer_name, subscription_id or None.
+        Dict with global rules instructions or None if not found.
     """
     response = (
         get_client()
-        .table("support_threads_data")
-        .select("customer_email, customer_name, subscription_id")
-        .eq("customer_email", email)
+        .table("ai_answerer_instructions")
+        .select("*")
+        .eq("type", "global_rules")
+        .eq("status", "enabled")
+        .order("created_at", desc=True)
         .limit(1)
         .execute()
     )

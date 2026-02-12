@@ -31,12 +31,19 @@
 - [x] CLAUDE.md (stack, env vars, DB connection, Langfuse)
 - [x] All docs/* (Agenta replaced with Langfuse)
 
+### Local Supabase
+- [x] supabase-db (PostgreSQL 15) in docker-compose
+- [x] supabase-rest (PostgREST) in docker-compose
+- [x] supabase-api (nginx reverse proxy) in docker-compose
+- [x] Init SQL: roles, schema (all tables), permissions, views
+
 ### Pending — Phase 0 Completion
-- [ ] Verify all containers healthy (docker compose ps)
-- [ ] Verify Langfuse UI accessible (http://localhost:3100)
-- [ ] Verify AI Engine health (curl http://localhost:8000/api/health)
-- [ ] Create DB tables in Supabase: chat_sessions, chat_messages
-- [ ] Verify ai_answerer_instructions table has data for categories
+- [x] Verify all containers healthy (docker compose ps)
+- [x] Verify Langfuse UI accessible (http://localhost:3100)
+- [x] Verify AI Engine health (curl http://localhost:8000/api/health)
+- [x] DB tables auto-created by init SQL (chat_sessions, chat_messages, etc.)
+- [ ] Start local Supabase (docker compose up supabase-db supabase-rest supabase-api)
+- [ ] Import historical data into ai_answerer_instructions
 - [ ] Create Pinecone index "support-examples" with namespaces
 - [ ] Test POST /api/chat with a real message
 - [ ] Push to GitHub
