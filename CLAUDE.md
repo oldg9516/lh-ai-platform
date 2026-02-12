@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AI-powered live chat platform for Lev Haolam customer support. Replaces email-only pipeline (n8n + Zoho) with real-time multi-channel chat using AI agents that classify, respond, and execute actions autonomously.
 
-**Stack:** Agno AgentOS (Python 3.12) + Chatwoot (Omnichannel) + Agenta (Eval Lab) + PostgreSQL (Supabase) + Pinecone + Docker Compose
+**Stack:** Agno AgentOS (Python 3.12) + Chatwoot (Omnichannel) + Langfuse (Observability & Eval) + PostgreSQL (Supabase) + Pinecone + Docker Compose
 
 **Current Phase:** Phase 0 (Foundation — AI Engine core). Core source code implemented.
 
@@ -34,8 +34,8 @@ docker compose exec ai-engine python -m shared.database.migrate
 # Health check
 curl http://localhost:8000/api/health
 
-# Export test set for Agenta eval lab
-python shared/scripts/export_test_set.py --days 30 --output services/eval-lab/test-sets/
+# Langfuse UI (observability + eval)
+open http://localhost:3100
 ```
 
 ## Architecture
@@ -77,9 +77,8 @@ The Support Agent is not 10 separate agents — it's a single factory function (
 | Service | Port | Phase | Technology |
 |---------|------|-------|------------|
 | AI Engine | 8000 | 0 | Agno AgentOS + FastAPI |
+| Langfuse | 3100 | 0 | Observability, tracing, eval, playground |
 | Chatwoot | 3000 | 2 | Omnichannel hub |
-| Agenta | 4000 | 3 | Eval lab |
-| Agno Dash | 9000 | 5 | NL→SQL analytics |
 | n8n | 5678 | existing | Email pipeline (continues in parallel) |
 
 ### Model Selection per Category
@@ -97,7 +96,7 @@ Both the existing n8n email pipeline and the new Agno chat platform:
 
 The new system adds 5 tables (`chat_sessions`, `chat_messages`, `agent_traces`, `tool_executions`, `learning_records`) and does NOT write to `support_threads_data` or `support_dialogs` (email-only).
 
-Connection is via **psycopg2** (sync, direct SQL), not Supabase REST API — chosen for speed.
+Connection is via **supabase-py** (REST API) using `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`.
 
 ### Pinecone Namespaces
 
@@ -117,7 +116,7 @@ Index: `support-examples`. Namespaces: `outstanding-cases`, `faq`, `retention`, 
 
 - **Python 3.12**, type hints everywhere
 - **Pydantic** for all data models (input/output)
-- **Async** for FastAPI routes, **sync** for database queries (psycopg2)
+- **Async** for FastAPI routes, **sync** for database queries (supabase-py)
 - **structlog** with JSON output for logging
 - **pydantic-settings** for env var config
 - Custom exceptions; never bare `except:`
@@ -178,16 +177,25 @@ Agno doesn't have a generic custom guardrail base class. Safety checks are imple
 
 Required in `.env` (see `.env.example`):
 ```
-OPENAI_API_KEY          # GPT-5.1, GPT-5.2
-ANTHROPIC_API_KEY       # Claude Sonnet 4.5 (retention only)
-DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASS  # Supabase PostgreSQL
-PINECONE_API_KEY        # Vector store
+OPENAI_API_KEY              # GPT-5.1
+ANTHROPIC_API_KEY           # Claude Sonnet 4.5 (retention only, optional for now)
+SUPABASE_URL                # Supabase project URL
+SUPABASE_SERVICE_ROLE_KEY   # Supabase service role key (bypasses RLS)
+PINECONE_API_KEY            # Vector store
 PINECONE_INDEX=support-examples
-AGNO_API_KEY            # Control Plane (os.agno.com)
-CANCEL_LINK_PASSWORD    # AES-256-GCM for cancel link encryption
+LANGFUSE_PUBLIC_KEY         # Langfuse (auto-created on first boot)
+LANGFUSE_SECRET_KEY         # Langfuse
+LANGFUSE_HOST               # http://langfuse-web:3000
+CANCEL_LINK_PASSWORD        # AES-256-GCM for cancel link encryption
 ```
 
 Phase 2+ adds: `CHATWOOT_URL`, `CHATWOOT_API_TOKEN`, `CHATWOOT_ACCOUNT_ID`, `N8N_URL`, `N8N_API_KEY`
+
+### Observability: Langfuse (self-hosted)
+
+Langfuse replaces both Agno Control Plane (paid SaaS) and Agenta (eval lab). Self-hosted via Docker Compose (6 services: web, worker, postgres, clickhouse, redis, minio). All agent calls are automatically traced via `AgnoInstrumentor` + OpenTelemetry.
+
+UI: `http://localhost:3100` — tracing, playground, evaluations, prompt management, cost tracking.
 
 ## Phase 0 File Creation Order
 
@@ -230,4 +238,4 @@ If any step fails — fix the issue first, then re-run the checks. Never commit 
 
 ## Deployment
 
-Single server (same machine as n8n at n8n.diconsulting.pro). All services in one Docker Compose network (`ai-platform-net`). Only `ai-engine:8000` and `chatwoot:3000` are exposed externally.
+Single server (same machine as n8n at n8n.diconsulting.pro). All services in one Docker Compose network (`ai-platform-net`). Exposed externally: `ai-engine:8000`, `chatwoot:3000` (Phase 2), `langfuse:3100` (internal only).

@@ -6,7 +6,7 @@
 |-----------|---------|-------------|
 | **AI Framework** | Agno AgentOS (Apache-2.0) | 37.4k ⭐, built-in tools/knowledge/guardrails/learning, Control Plane |
 | **Omnichannel** | Chatwoot (MIT) | 21k+ ⭐, self-hosted, widget + WhatsApp + FB + Email + TG |
-| **Eval Lab** | Agenta (MIT) | Self-hosted, test sets, LLM-as-Judge, model comparison |
+| **Observability & Eval** | Langfuse (MIT) | Self-hosted, tracing, playground, eval pipelines, LLM-as-Judge |
 | **Analytics** | Agno Dash (Apache-2.0) | NL → SQL, self-learning, 6 layers context |
 | **Workflows** | n8n (Fair-code) | Уже работает, email pipeline продолжает |
 | **Database** | PostgreSQL (Supabase) | Уже работает, все таблицы на месте |
@@ -142,14 +142,8 @@ lev-haolam-ai-platform/
 │   │   └── hooks/
 │   │       └── webhook_handler.py
 │   │
-│   ├── eval-lab/                   # Phase 3
-│   │   ├── docker-compose.agenta.yml
-│   │   ├── .env.agenta
-│   │   ├── test-sets/
-│   │   └── evaluators/
-│   │       ├── safety_eval.py
-│   │       ├── tone_eval.py
-│   │       └── action_eval.py
+│   ├── langfuse/                   # Phase 0 (included in docker-compose.yml)
+│   │   └── (6 services: web, worker, postgres, clickhouse, redis, minio)
 │   │
 │   └── analytics/                  # Phase 5
 │       ├── Dockerfile
@@ -266,11 +260,10 @@ CATEGORY_CONFIG = {
 Все сервисы в одной Docker network: ai-platform-net
 
 ai-engine:8000      ← Agno AgentOS API
+langfuse:3100       ← Observability + Eval (Phase 0)
 chatwoot:3000       ← Omnichannel Hub (Phase 2)
-eval-lab:4000       ← Agenta UI (Phase 3)
-analytics:9000      ← Agno Dash (Phase 5)
 n8n:5678            ← Уже работает (external)
-postgres:5432       ← Supabase (external, hosted)
+postgres:5432       ← Supabase (external, cloud)
 ```
 
 Сервисы общаются по internal network. Только chatwoot:3000 и ai-engine:8000 exposed наружу.

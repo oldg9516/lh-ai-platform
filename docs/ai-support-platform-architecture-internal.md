@@ -106,19 +106,19 @@
 
 ┌─────────────────────────────────────────────────────────────────────┐
 │                                                                     │
-│     СЕРВИС 3: AGENTA (open-source, MIT)                             │
-│     Eval Lab — Лаборатория качества                                 │
-│     https://github.com/agenta-ai/agenta                             │
+│     СЕРВИС 3: LANGFUSE (open-source, MIT)                            │
+│     Observability + Eval Lab                                         │
+│     https://github.com/langfuse/langfuse                             │
 │                                                                     │
-│   • Импорт CSV (export из support_threads_data) → Test Sets        │
-│   • Side-by-side: GPT-5.1 vs Claude Sonnet 4.5 vs GPT-5.2         │
+│   • Tracing: автоматический перехват всех вызовов агентов (OTEL)    │
+│   • Playground: тест промптов с разными моделями                    │
+│   • Datasets: импорт тикетов → test sets                            │
 │   • LLM-as-Judge: AI оценивает по критериям (accuracy, tone, safety)│
-│   • Human annotation: агенты поддержки ревьюят сложные кейсы       │
-│   • A/B тестирование промптов: v1 vs v2 → метрики → winner         │
-│   • Custom Python evaluators: red lines, hallucination detection    │
-│   • Prompt versioning + branching + deploy                          │
+│   • Experiments: side-by-side model/prompt comparison                │
+│   • Prompt management: версионирование + deploy                     │
+│   • Cost tracking: стоимость каждого вызова                         │
 │                                                                     │
-│   Docker: agenta-ai/agenta (docker-compose) | Port: 4000            │
+│   Docker: langfuse/langfuse:3 (6 services) | Port: 3100             │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 
@@ -353,40 +353,37 @@ Chatwoot отправляет webhook при каждом новом сообщ�
 
 ---
 
-## 5. Agenta: Eval Lab
+## 5. Langfuse: Observability + Eval Lab
 
-**GitHub:** https://github.com/agenta-ai/agenta (MIT, self-hosted)
+**GitHub:** https://github.com/langfuse/langfuse (MIT, self-hosted)
 
-### Зачем нужна поверх Agno
+### Что покрывает Langfuse (заменяет Agno Control Plane + Agenta)
 
-| Agno Control Plane (оперативное) | Agenta (стратегическое) |
-|----------------------------------|------------------------|
-| Трейсинг каждого запроса | Прогнать 5,000 тикетов через новый промпт |
-| Встроенные evals (accuracy, reliability) | Side-by-side GPT-5.1 vs Claude на test set |
-| Chat playground | LLM-as-Judge pipeline |
-| Session viewer | A/B тестирование промптов |
-| Real-time | Batch evaluation + отчёты |
+| Функция | Описание |
+|---------|----------|
+| Tracing | Автоматический перехват всех вызовов агентов через AgnoInstrumentor + OTEL |
+| Playground | Тест промптов с разными моделями в реальном времени |
+| Datasets | Импорт тикетов → test sets для batch evaluation |
+| LLM-as-Judge | AI оценивает по критериям (accuracy, tone, safety) |
+| Experiments | Side-by-side: GPT-5.1 vs Claude, промпт v1 vs v2 |
+| Prompt management | Версионирование, deploy, A/B тестирование |
+| Cost tracking | Стоимость каждого вызова по модели |
 
 ### Workflow
 
 ```
-1. EXPORT: support_threads_data → CSV (5,000 тикетов)
-   
-2. UPLOAD: CSV → Agenta Test Set
+1. TRACING: Все вызовы агентов автоматически попадают в Langfuse (OTEL)
+
+2. DATASET: Импорт тикетов из support_threads_data → Langfuse Dataset
    Ground truth = лучшие ответы агентов
-   
-3. RUN: Test Set → Agno API → 5,000 ответов AI
-   
-4. EVALUATE:
-   • LLM-as-Judge (GPT-5.2 оценивает GPT-5.1 ответы)
-   • Custom evaluators (Python): red lines, safety
-   • Human annotation: агенты ревьюят edge cases
-   
-5. COMPARE:
+
+3. EXPERIMENT: Dataset → AI Engine API → ответы → LLM-as-Judge scoring
+
+4. COMPARE:
    • GPT-5.1 vs Claude Sonnet 4.5 → кто лучше для retention?
    • Промпт v1 vs v2 → какой лучше для shipping?
-   
-6. DEPLOY: Winner → update config в Agno
+
+5. DEPLOY: Winner → update config
 ```
 
 ---
@@ -465,14 +462,8 @@ lev-haolam-ai-platform/
 │   │   └── hooks/
 │   │       └── webhook_handler.py  # Chatwoot → Agno bridge
 │   │
-│   ├── eval-lab/                   # Agenta
-│   │   ├── docker-compose.agenta.yml    # Agenta's own compose
-│   │   ├── .env.agenta             # Agenta env vars
-│   │   ├── test-sets/              # Exported CSVs from Supabase
-│   │   └── evaluators/
-│   │       ├── safety_eval.py      # Red lines compliance checker
-│   │       ├── tone_eval.py        # Tone appropriateness
-│   │       └── action_eval.py      # Action correctness
+│   ├── langfuse/                   # Langfuse (in docker-compose.yml)
+│   │   └── (6 services: web, worker, postgres, clickhouse, redis, minio)
 │   │
 │   ├── analytics/                  # Agno Dash
 │   │   ├── Dockerfile
@@ -490,7 +481,7 @@ lev-haolam-ai-platform/
 │   │   ├── migrations/             # Новые таблицы для Agno (sessions, memory)
 │   │   └── seed/                   # Initial data
 │   └── scripts/
-│       ├── export_test_set.py      # Supabase → CSV для Agenta
+│       ├── export_test_set.py      # Supabase → CSV для Langfuse datasets
 │       └── sync_instructions.py    # ai_answerer_instructions → Agno config
 │
 └── docs/
@@ -523,18 +514,8 @@ services:
       service: chatwoot
     ports: ["3000:3000"]
 
-  eval-lab:
-    extends:
-      file: ./services/eval-lab/docker-compose.agenta.yml
-      service: agenta
-    ports: ["4000:80"]
-
-  analytics:
-    build: ./services/analytics
-    ports: ["9000:8000"]
-    environment:
-      - DB_HOST=${SUPABASE_HOST}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+  # Langfuse (6 services) — see docker-compose.yml for full config
+  # langfuse-web:3100, langfuse-worker, langfuse-postgres, langfuse-clickhouse, langfuse-redis, langfuse-minio
 
   n8n:
     extends:
@@ -579,15 +560,16 @@ volumes:
 │                      └──────────┘ └────────┘ └──────┘   │
 │                            ▲          ▲                  │
 │                            │          │                  │
-│  ┌───────────────┐         │     ┌────────────────┐     │
-│  │ AGENTA        │─────────┘     │ AGNO DASH      │     │
-│  │ Eval Lab      │  reads DB     │ Analytics      │     │
-│  │ :4000         │               │ :9000          │     │
-│  │               │               │                │     │
-│  │ • Test sets   │               │ • NL → SQL     │     │
-│  │ • LLM-as-Judge│               │ • Self-learning│     │
-│  │ • A/B testing │               │ • Insights     │     │
-│  └───────────────┘               └────────────────┘     │
+│  ┌───────────────┐         │                            │
+│  │ LANGFUSE      │─────────┘                            │
+│  │ Observability │  traces + eval                       │
+│  │ :3100         │                                      │
+│  │               │                                      │
+│  │ • Tracing     │                                      │
+│  │ • Playground  │                                      │
+│  │ • Eval        │                                      │
+│  │ • Datasets    │                                      │
+│  └───────────────┘                                      │
 │                                                          │
 │  ┌───────────────┐                                       │
 │  │ N8N           │  (email pipeline, продолжает работать)│
@@ -604,7 +586,7 @@ volumes:
 | Принцип | Реализация | Технология |
 |---------|-----------|-----------|
 | Data sovereignty | Все данные в Supabase, ничего наружу | Supabase self-hosted / cloud |
-| Zero egress tracing | Agno Control Plane из браузера → runtime | os.agno.com → localhost:8000 |
+| Zero egress tracing | Langfuse self-hosted, все трейсы локально | langfuse:3100 → localhost |
 | Auth | JWT + RBAC | Agno built-in |
 | Encryption | AES-256-GCM для personalized links | Node crypto (n8n) / Python cryptography |
 | Red lines | Hardcoded в UNIVERSAL_RULES | Agno Guardrails |
@@ -657,18 +639,17 @@ volumes:
 
 ---
 
-### Phase 3: Actions + Agenta
+### Phase 3: Actions + Eval Pipelines
 **Цель:** AI действует + глубокое тестирование
 
 - Action tools с Agno HITL: pause, skip, change_address, damage_claim
 - Персонализированные cancel links (AES-256-GCM encryption)
-- Docker: agenta → развернуть
-- Export support_threads_data → CSV → Agenta Test Sets
-- LLM-as-Judge evaluators (safety, tone, accuracy)
-- Side-by-side: GPT-5.1 vs Claude на retention test set
-- A/B промптов: v1 vs v2 → метрики
+- Langfuse datasets: импорт тикетов из support_threads_data
+- LLM-as-Judge evaluators в Langfuse (safety, tone, accuracy)
+- Experiments: GPT-5.1 vs Claude на retention dataset
+- A/B промптов: v1 vs v2 → метрики в Langfuse
 
-**Чекпоинт:** AI выполняет действия. Качество проверено на 5,000+ тикетов.
+**Чекпоинт:** AI выполняет действия. Качество проверено на 5,000+ тикетов в Langfuse.
 
 ---
 
@@ -695,7 +676,7 @@ volumes:
 - Load knowledge → начать использовать
 - Learning Machine: ошибки SQL → auto-fix → never repeat
 - Production monitoring через Agno Control Plane
-- Feedback loop: production → Agenta eval → improvement
+- Feedback loop: production → Langfuse eval → improvement
 
 **Чекпоинт:** "Сколько тикетов сегодня?" → мгновенный insight. Production stable.
 
@@ -733,8 +714,7 @@ volumes:
 |--------|-----------|----------|-------------|------|
 | **AI Engine** | Agno AgentOS | Apache-2.0 | 37.4k ⭐ | Агенты, tools, learning, API, console |
 | **Omnichannel** | Chatwoot | MIT | 21k+ ⭐ | Каналы, виджет, inbox, handoff |
-| **Eval Lab** | Agenta | MIT | ~5k ⭐ | Test sets, model comparison, LLM-as-Judge |
-| **Analytics** | Agno Dash | Apache-2.0 | 121 ⭐ | Self-learning NL → SQL → insights |
+| **Observability & Eval** | Langfuse | MIT | 10k+ ⭐ | Tracing, playground, eval, datasets, cost tracking |
 | **Workflows** | n8n | Fair-code | 50k+ ⭐ | Email pipeline, jobs (уже работает) |
 | **Database** | Supabase (PostgreSQL) | Apache-2.0 | — | Данные, memory, traces |
 | **Vector Store** | Pinecone | SaaS | — | Knowledge base, FAQ, examples |

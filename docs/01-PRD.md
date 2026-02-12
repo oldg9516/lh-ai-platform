@@ -189,7 +189,7 @@
 ### НЕ включено в MVP
 - Chatwoot (виджет, каналы) → Phase 2
 - Action tools (пауза, skip и т.д.) → Phase 3
-- Agenta (eval lab) → Phase 3
+- Langfuse eval pipelines → Phase 1 (observability already in Phase 0)
 - Analytics (Agno Dash) → Phase 5
 - WhatsApp, Facebook, Telegram → Phase 4+
 

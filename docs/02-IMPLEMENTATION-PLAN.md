@@ -220,7 +220,7 @@ docker-compose.dev.yml: hot reload, debug ports
 
 ---
 
-## Phase 3: Actions + Agenta
+## Phase 3: Actions + Eval Pipelines
 
 ### Шаг 3.1: Action tools с HITL
 ```
@@ -232,19 +232,17 @@ docker-compose.dev.yml: hot reload, debug ports
 Каждый action tool: needsApproval=true → HITL confirmation
 ```
 
-### Шаг 3.2: Agenta Eval Lab
+### Шаг 3.2: Langfuse Eval Pipelines
 ```
-Файлы:
-- services/eval-lab/docker-compose.agenta.yml
-- services/eval-lab/.env.agenta
-- services/eval-lab/test-sets/ (exported CSVs)
-- services/eval-lab/evaluators/safety_eval.py
-- services/eval-lab/evaluators/tone_eval.py
-- services/eval-lab/evaluators/action_eval.py
-- shared/scripts/export_test_set.py (Supabase → CSV)
+Настроить в Langfuse (http://localhost:3100):
+- Datasets: импорт исторических тикетов из Supabase
+- Evaluators: safety, tone, action accuracy (LLM-as-Judge)
+- Experiments: side-by-side model comparison
+- Prompt management: версионирование промптов
+Langfuse уже развёрнут в Phase 0 (docker-compose.yml).
 ```
 
-**Чекпоинт Phase 3:** AI выполняет действия с подтверждением. Качество проверено на 5,000+ тикетов в Agenta.
+**Чекпоинт Phase 3:** AI выполняет действия с подтверждением. Качество проверено на 5,000+ тикетов в Langfuse.
 
 ---
 

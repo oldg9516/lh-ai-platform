@@ -732,7 +732,7 @@ Agenta остаётся полезной для одной конкретной 
 | **Braintrust** | SaaS | Лучший UX, Loop для auto-evals | Closed-source, дорого | Pro $249/mo |
 | **LangSmith** | SaaS | Глубокий LangChain integration | Lock-in, не нужен с Agno | $39/user/mo |
 
-**Вердикт:** На старте — **только Agno** (Control Plane покрывает playground, tracing, evals). Добавить Agenta позже для массового model comparison и LLM-as-Judge если встроенных evals Agno окажется недостаточно. Langfuse — **не нужен**, т.к. Agno имеет встроенный tracing без egress.
+**Вердикт (обновлён):** Используем **Langfuse** (self-hosted, MIT) — покрывает tracing, playground, eval pipelines, LLM-as-Judge, datasets, prompt management. Заменяет и Agno Control Plane ($150/mo SaaS), и Agenta. Уже развёрнут в Phase 0 через Docker Compose.
 
 ---
 
@@ -1293,8 +1293,8 @@ Lev Haolam — международный бизнес. Нужна поддер�
 | # | Решение | Варианты | Рекомендация |
 |---|---------|----------|--------------|
 | 1 | Agent Framework | Agno / LangGraph / Custom | **Agno** (framework + runtime + UI — всё в одном) |
-| 2 | Playground/Monitoring | Agno Control Plane / Agenta / Langfuse | **Agno Control Plane** (встроенный, zero egress) |
-| 3 | Расширенные Evals | Agno built-in / Agenta / Braintrust | **Agno built-in** → Agenta позже если нужны CSV test sets |
+| 2 | Playground/Monitoring | Agno Control Plane / Langfuse / Agenta | **Langfuse** (self-hosted, MIT, tracing + playground + eval) |
+| 3 | Расширенные Evals | Langfuse / Agenta / Braintrust | **Langfuse** (datasets, LLM-as-Judge, experiments) |
 | 4 | Chat Widget | Custom React / Chatwoot / готовый | **Custom React** → Chatwoot позже |
 | 5 | Primary Model | GPT-5.1 / Claude Sonnet 4.5 | **GPT-5.1** (cost), Claude для retention |
 | 6 | Hosting | Vercel / Self-hosted / Cloud | **Docker self-hosted** (Agno) |

@@ -4,7 +4,7 @@
 
 AI-powered live chat platform for Lev Haolam customer support. Replaces email-only pipeline (n8n + Zoho) with real-time multi-channel chat using AI agents that can classify, respond, and execute actions autonomously.
 
-**Stack:** Agno AgentOS (Python) + Chatwoot (Omnichannel) + Agenta (Eval Lab) + PostgreSQL (Supabase) + Pinecone + Docker Compose
+**Stack:** Agno AgentOS (Python) + Chatwoot (Omnichannel) + Langfuse (Observability & Eval) + PostgreSQL (Supabase) + Pinecone + Docker Compose
 
 **Current Phase:** Phase 0 (Foundation — AI Engine core)
 
@@ -60,7 +60,7 @@ lev-haolam-ai-platform/
 │   └── api/                     # FastAPI routes
 │
 ├── services/chatwoot/           # Phase 2: Omnichannel
-├── services/eval-lab/           # Phase 3: Agenta
+├── langfuse (in docker-compose)  # Phase 0: Observability & Eval
 ├── services/analytics/          # Phase 5: Agno Dash
 │
 ├── shared/database/migrations/  # SQL migration files
@@ -139,8 +139,8 @@ docker compose exec ai-engine pytest tests/
 # Run migrations
 docker compose exec ai-engine python -m shared.database.migrate
 
-# Export test set for Agenta
-python shared/scripts/export_test_set.py --days 30 --output services/eval-lab/test-sets/
+# Langfuse UI (observability + eval)
+open http://localhost:3100
 ```
 
 ---
@@ -189,8 +189,8 @@ def pause_subscription(subscription_id: str) -> str:
 
 - **Unit tests:** agents/router.py, agents/eval_gate.py, guardrails/safety.py
 - **Integration tests:** full pipeline with mock DB
-- **Eval tests:** via Agno Control Plane built-in evals
-- **Load tests:** via Agenta test sets (Phase 3)
+- **Eval tests:** via Langfuse eval pipelines + datasets
+- **Load tests:** via Langfuse experiments (datasets + evaluators)
 
 ---
 
@@ -202,9 +202,8 @@ n8n already running in Docker on port 5678.
 
 ```
 :8000 — AI Engine (Agno AgentOS)
+:3100 — Langfuse (Observability & Eval)
 :3000 — Chatwoot (Phase 2)
-:4000 — Agenta (Phase 3)
-:9000 — Analytics (Phase 5)
 :5678 — n8n (already running)
 ```
 

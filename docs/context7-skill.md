@@ -111,7 +111,7 @@ For libraries not well covered by Context7, use these direct documentation URLs:
 | **Chatwoot API**         | https://www.chatwoot.com/developers/api/            | REST API reference                                    |
 | **Chatwoot GitHub**      | https://github.com/chatwoot/chatwoot                | Source + docs                                         |
 | **Pinecone Python**      | https://docs.pinecone.io/reference/python-sdk       | Python SDK reference                                  |
-| **Agenta (Eval Lab)**    | https://docs.agenta.ai/                             | Evaluation platform docs                              |
+| **Langfuse (Observability)** | https://langfuse.com/docs                        | Tracing, eval, playground docs                        |
 
 ---
 
