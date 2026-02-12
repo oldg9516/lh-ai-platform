@@ -1,0 +1,28 @@
+# AI Framework
+agno[openai,anthropic,pinecone,postgres]
+
+# Web Framework
+fastapi[standard]
+uvicorn[standard]
+
+# Database
+psycopg2-binary
+
+# Configuration
+pydantic-settings
+
+# Logging
+structlog
+
+# HTTP client
+httpx
+
+# Encryption
+cryptography
+
+# Retry logic
+tenacity
+
+# Testing
+pytest
+pytest-asyncio

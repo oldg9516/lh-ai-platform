@@ -1,0 +1,22 @@
+services:
+  ai-engine:
+    build:
+      context: .
+      dockerfile: services/ai-engine/Dockerfile
+    container_name: ai-engine
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    networks:
+      - ai-platform-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+networks:
+  ai-platform-net:
+    driver: bridge
