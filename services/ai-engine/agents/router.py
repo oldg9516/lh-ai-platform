@@ -61,7 +61,7 @@ def create_router_agent() -> Agent:
         name="Router Agent",
         model=OpenAIChat(id="gpt-5.1"),
         instructions=ROUTER_INSTRUCTIONS,
-        response_model=RouterOutput,
+        output_schema=RouterOutput,
         markdown=False,
     )
 

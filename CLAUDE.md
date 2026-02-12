@@ -152,13 +152,13 @@ agent = Agent(
     search_knowledge=True,
 )
 
-# Structured output — use response_model parameter
+# Structured output — use output_schema parameter (NOT response_model)
 from pydantic import BaseModel
 class RouterOutput(BaseModel):
     primary: str
     urgency: str
 
-agent = Agent(model=OpenAIChat(id="gpt-5.1"), response_model=RouterOutput)
+agent = Agent(model=OpenAIChat(id="gpt-5.1"), output_schema=RouterOutput)
 
 # Tool with HITL approval (Phase 2+)
 from agno.tools import tool

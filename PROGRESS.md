@@ -12,7 +12,7 @@
 ### AI Engine Code
 - [x] config.py (pydantic-settings, env vars)
 - [x] database/connection.py (supabase-py client singleton)
-- [x] database/queries.py (get_instructions, get_customer, save_session, save_message)
+- [x] database/queries.py (get_instructions, get_global_rules, save_session, save_message)
 - [x] knowledge/pinecone_client.py (PineconeDb per-namespace)
 - [x] guardrails/safety.py (red lines + subscription safety)
 - [x] agents/config.py (CATEGORY_CONFIG, 10 categories)
@@ -32,21 +32,35 @@
 - [x] All docs/* (Agenta replaced with Langfuse)
 
 ### Local Supabase
-- [x] supabase-db (PostgreSQL 15) in docker-compose
+- [x] supabase-db (PostgreSQL 17) in docker-compose
 - [x] supabase-rest (PostgREST) in docker-compose
 - [x] supabase-api (nginx reverse proxy) in docker-compose
 - [x] Init SQL: roles, schema (all tables), permissions, views
 
-### Pending — Phase 0 Completion
-- [x] Verify all containers healthy (docker compose ps)
-- [x] Verify Langfuse UI accessible (http://localhost:3100)
-- [x] Verify AI Engine health (curl http://localhost:8000/api/health)
-- [x] DB tables auto-created by init SQL (chat_sessions, chat_messages, etc.)
-- [ ] Start local Supabase (docker compose up supabase-db supabase-rest supabase-api)
-- [ ] Import historical data into ai_answerer_instructions
-- [ ] Create Pinecone index "support-examples" with namespaces
-- [ ] Test POST /api/chat with a real message
-- [ ] Push to GitHub
+### Data Import
+- [x] Import 10 ai_answerer_instructions (v3 prompts) from production
+- [x] Import 500 support_threads_data records from production
+- [x] database/import.py + database/import_threads.py scripts
+
+### Smoke Test Results (all passed)
+- [x] shipping_or_delivery_question — correct classification + quality response (8.4s)
+- [x] retention_primary_request — downsell offer + cancel link (9.0s)
+- [x] death threat → escalate (38ms, red line pre-check)
+- [x] gratitude — warm response (5.2s)
+- [x] damaged_or_leaking_item_report — photo request + replacement (4.7s)
+- [x] recipient_or_address_change — asks for full address (10.7s)
+- [x] payment_question — charge date info (5.8s)
+- [x] customization_request — alcohol-free update (3.8s)
+
+### Phase 0 Completed
+- [x] All 10 containers healthy (docker compose ps)
+- [x] Langfuse UI accessible (http://localhost:3100)
+- [x] AI Engine health check (http://localhost:8000/api/health)
+- [x] DB tables auto-created by init SQL
+- [x] Local Supabase with production schemas
+- [x] Pinecone index "support-examples" connected
+- [x] POST /api/chat full pipeline working
+- [x] Pushed to GitHub
 
 ---
 

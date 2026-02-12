@@ -79,7 +79,6 @@ def create_support_agent(category: str) -> Agent:
         "model": _resolve_model(config),
         "instructions": instructions,
         "markdown": True,
-        "add_datetime_to_instructions": True,
     }
 
     if knowledge:
