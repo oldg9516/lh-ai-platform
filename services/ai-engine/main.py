@@ -30,6 +30,8 @@ os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse_secret_key)
 os.environ.setdefault("LANGFUSE_HOST", settings.langfuse_host)
 
 try:
+    import base64
+
     from openinference.instrumentation.agno import AgnoInstrumentor
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk import trace as trace_sdk
@@ -37,9 +39,15 @@ try:
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
     endpoint = f"{settings.langfuse_host}/api/public/otel/v1/traces"
+    # Langfuse OTLP requires Basic Auth: public_key:secret_key
+    auth_token = base64.b64encode(
+        f"{settings.langfuse_public_key}:{settings.langfuse_secret_key}".encode()
+    ).decode()
+    headers = {"Authorization": f"Basic {auth_token}"}
+
     tracer_provider = trace_sdk.TracerProvider()
     tracer_provider.add_span_processor(
-        SimpleSpanProcessor(OTLPSpanExporter(endpoint=endpoint))
+        SimpleSpanProcessor(OTLPSpanExporter(endpoint=endpoint, headers=headers))
     )
     trace_api.set_tracer_provider(tracer_provider)
     AgnoInstrumentor().instrument()
