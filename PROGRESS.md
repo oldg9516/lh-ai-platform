@@ -36,11 +36,14 @@
 - [x] supabase-rest (PostgREST) in docker-compose
 - [x] supabase-api (nginx reverse proxy) in docker-compose
 - [x] Init SQL: roles, schema (all tables), permissions, views
+- [x] Supabase Studio UI (port 54323) + postgres-meta service
 
 ### Data Import
 - [x] Import 10 ai_answerer_instructions (v3 prompts) from production
 - [x] Import 500 support_threads_data records from production
-- [x] database/import.py + database/import_threads.py scripts
+- [x] Import 1000 more support_threads_data records (total: 1500)
+- [x] Import 3000 ai_human_comparison records (with subscription_info, tracking_info, identification)
+- [x] database/import.py + database/import_threads.py + database/import_comparison.py scripts
 
 ### Smoke Test Results (all passed)
 - [x] shipping_or_delivery_question — correct classification + quality response (8.4s)
@@ -66,11 +69,34 @@
 
 ## Phase 1: Live Testing + Tuning
 
-- [ ] Test all 10 categories with real customer messages
-- [ ] Tune prompts based on Langfuse traces
-- [ ] Set up Langfuse datasets from historical tickets
-- [ ] Run first eval pipeline (safety, tone, accuracy)
-- [ ] Add error handling improvements based on live testing
+### N8n Workflow Feature Parity
+- [x] Instruction merging (global + specific, matching n8n production logic)
+- [x] Pinecone dimension fix (1536 → 1024 configurable)
+- [x] Name extraction (fast path: contact_name, LLM path: GPT-5-mini from signature)
+- [x] Response assembly (deterministic: greeting + opener + body + closer + sign-off in HTML divs)
+- [x] Cancel link generation (AES-256-GCM encryption) — moved from Phase 3
+- [x] Cancel link injection for retention categories
+
+### Testing
+- [x] Test all 10 categories with real customer messages (29 integration tests)
+- [x] Unit tests: guardrails (19), response assembler (16), name extractor (14)
+- [x] All 78 tests passing (49 unit + 29 integration)
+
+### Observability Fixes
+- [x] Fix Langfuse tracing (Basic Auth on OTLP exporter)
+- [x] Traces visible in Langfuse UI
+
+### Eval System
+- [x] Export 3000 ai_human_comparison records (golden dataset with classification)
+- [ ] Import ai_human_comparison into local Supabase
+- [ ] Create Langfuse dataset from golden records (PERFECT_MATCH + STYLISTIC_EDIT)
+- [ ] Eval runner: pipeline + LLM-judge scoring → Langfuse
+- [ ] Langfuse dashboard: accuracy, tone, safety, completeness trends
+
+### Remaining
+- [ ] Outstanding Detection (Pinecone similarity for problem cases)
+- [ ] Eval Gate agent (send/draft/escalate decision per response)
+- [ ] Tune prompts based on Langfuse eval results
 - [ ] Switch retention to Claude Sonnet 4.5 when API key available
 
 ---
@@ -87,10 +113,9 @@
 
 ## Phase 3: Actions + Eval
 
+- [x] Cancel link generation (AES-256-GCM) — done in Phase 1
 - [ ] Action tools with HITL (pause, skip, change_address, damage_claim)
-- [ ] Cancel link generation (AES-256-GCM)
-- [ ] Langfuse eval pipelines (LLM-as-Judge)
-- [ ] Side-by-side model comparison experiments
+- [ ] Side-by-side model comparison experiments in Langfuse
 - [ ] A/B prompt testing
 
 ---
