@@ -36,7 +36,9 @@ services:
       - supabase_db_data:/var/lib/postgresql/data
       - ./services/supabase/init:/docker-entrypoint-initdb.d
     networks:
-      - ai-platform-net
+      ai-platform-net:
+        aliases:
+          - db
     ports:
       - "54322:5432"
     healthcheck:
@@ -79,6 +81,47 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  supabase-studio:
+    image: supabase/studio:latest
+    container_name: supabase-studio
+    restart: always
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    ports:
+      - "54323:3000"
+    environment:
+      STUDIO_PG_META_URL: http://supabase-meta:8080
+      SUPABASE_URL: http://supabase-api
+      SUPABASE_REST_URL: http://supabase-rest:3000
+      SUPABASE_ANON_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
+      POSTGRES_PASSWORD: ${SUPABASE_DB_PASSWORD:-postgres}
+      DEFAULT_ORGANIZATION_NAME: Lev Haolam
+      DEFAULT_PROJECT_NAME: AI Support
+      NEXT_PUBLIC_ENABLE_LOGS: "false"
+      NEXT_ANALYTICS_BACKEND_PROVIDER: ""
+    networks:
+      - ai-platform-net
+
+  supabase-meta:
+    image: supabase/postgres-meta:v0.84.2
+    container_name: supabase-meta
+    restart: always
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: supabase-db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: postgres
+      PG_META_DB_USER: postgres
+      PG_META_DB_PASSWORD: ${SUPABASE_DB_PASSWORD:-postgres}
+      PG_META_DB_URL: postgresql://postgres:${SUPABASE_DB_PASSWORD:-postgres}@supabase-db:5432/postgres
+    networks:
+      - ai-platform-net
 
   # --- Langfuse (Observability) ---
 
