@@ -146,16 +146,72 @@
 
 ## Phase 3: Actions + Eval
 
+### Action Tools with HITL
 - [x] Cancel link generation (AES-256-GCM) — done in Phase 1
-- [ ] Action tools with HITL (pause, skip, change_address, damage_claim)
-- [ ] Side-by-side model comparison experiments in Langfuse
-- [ ] A/B prompt testing
+- [ ] pause_subscription tool (Agno HITL: requires_confirmation=True)
+- [ ] skip_month tool
+- [ ] change_address tool
+- [ ] damage_claim tool (create claim + request photos)
+- [ ] Customer identification flow (email → Zoho/Supabase lookup)
+- [ ] Read-only tools: get_subscription, track_package, order_history
+
+### Eval & Experiments
+- [ ] Side-by-side model comparison in Langfuse (GPT-5.1 vs Claude on retention)
+- [ ] A/B prompt testing (v1 vs v2 per category)
+- [ ] Run full eval on golden dataset (338 items) — baseline scores established
 
 ---
 
 ## Phase 4: Retention + Channels
 
-- [ ] Claude Sonnet 4.5 for retention
-- [ ] Personalized retention offers
-- [ ] Email channel via Chatwoot
-- [ ] Telegram, Facebook Messenger
+### Retention Agent
+- [ ] Claude Sonnet 4.5 for retention_primary_request + retention_repeated_request
+- [ ] Extended thinking for complex retention scenarios
+- [ ] Personalized retention offers (based on customer history)
+- [ ] Escalation flow: AI → Chatwoot (assign to human agent)
+
+### Multi-Channel
+- [ ] WhatsApp channel via Chatwoot
+- [ ] Email channel via Chatwoot (parallel with n8n pipeline)
+- [ ] Telegram bot via Chatwoot
+- [ ] Facebook Messenger via Chatwoot
+
+---
+
+## Phase 5: Agno Dash Analytics
+
+### Setup
+- [ ] Deploy Agno Dash (docker: python + agno + dash, port 9000)
+- [ ] Connect read-only to Supabase PostgreSQL
+- [ ] UI via AgentOS Control Plane (os.agno.com)
+
+### Knowledge Base
+- [ ] Table schemas: tables/support_threads_data.json, chat_sessions.json, etc.
+- [ ] Business rules: metrics.json (Resolution rate, AI vs Human), categories.json
+- [ ] Query patterns: resolution_rate.sql, ai_vs_human.sql, funnel.sql, stuck.sql
+- [ ] Load knowledge: `python -m dash.scripts.load_knowledge`
+
+### Analytics Capabilities
+- [ ] Natural language queries → SQL → insights ("Сколько тикетов AI обработал за неделю?")
+- [ ] Learning Machine: SQL errors → auto-fix → never repeat
+- [ ] 6 context layers: schema, rules, queries, docs, learnings, runtime
+
+---
+
+## Phase 6: Scale + Production
+
+### Auto-Send Expansion
+- [ ] Auto-send on all safe categories (EvalGate per category thresholds)
+- [ ] Cost optimization (cheap models for simple categories)
+- [ ] Production monitoring via Langfuse + Agno Control Plane
+
+### Advanced Features
+- [ ] Multi-turn conversation history (Chatwoot thread context)
+- [ ] Agno Teams: QA Agent + Escalation Agent
+- [ ] Agno Learning Machine: cross-user insights (transfer learning)
+- [ ] CRM integration for proactive support
+- [ ] n8n email pipeline → gradual migration to Agno
+
+### Feedback Loop
+- [ ] Production traces → Langfuse eval → prompt improvement cycle
+- [ ] Auto-detect quality regression → alert → rollback
