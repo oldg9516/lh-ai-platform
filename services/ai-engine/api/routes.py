@@ -1,8 +1,9 @@
 """FastAPI routes for the AI Engine.
 
-POST /api/chat — main pipeline: safety → classify+name → support+outstanding → cancel link
-                 → assemble → eval gate → save → respond.
-GET  /api/health — service health check.
+POST /api/chat            — main pipeline: safety → classify+name → support+outstanding
+                            → cancel link → assemble → eval gate → save → respond.
+POST /api/webhook/chatwoot — Chatwoot webhook bridge: parse → chat() → dispatch back.
+GET  /api/health           — service health check.
 """
 
 import asyncio
@@ -271,3 +272,165 @@ async def chat(request: ChatRequest):
             "eval_checks": [c.model_dump() for c in eval_result.checks],
         },
     )
+
+
+# --- Chatwoot Webhook ---
+
+
+# Idempotency: track recently processed message IDs (TTL 5 min)
+_processed_messages: dict[int, float] = {}
+_DEDUP_TTL_SECONDS = 300
+
+
+def _is_duplicate(message_id: int) -> bool:
+    """Check if message was already processed. Prunes stale entries."""
+    now = time.time()
+    stale = [k for k, v in _processed_messages.items() if now - v > _DEDUP_TTL_SECONDS]
+    for k in stale:
+        del _processed_messages[k]
+    if message_id in _processed_messages:
+        return True
+    _processed_messages[message_id] = now
+    return False
+
+
+class ChatwootSender(BaseModel):
+    id: int | None = None
+    name: str | None = None
+    email: str | None = None
+    type: str | None = None
+
+
+class ChatwootConversation(BaseModel):
+    id: int
+    inbox_id: int | None = None
+    status: str | None = None
+
+
+class ChatwootWebhookPayload(BaseModel):
+    event: str
+    id: int | None = None
+    content: str | None = None
+    message_type: str | None = None
+    private: bool = False
+    sender: ChatwootSender | None = None
+    conversation: ChatwootConversation | None = None
+    account: dict | None = None
+
+
+@router.post("/webhook/chatwoot")
+async def chatwoot_webhook(payload: ChatwootWebhookPayload):
+    """Handle incoming Chatwoot webhook events.
+
+    Only processes message_created events with incoming message_type.
+    Dispatches AI response back to Chatwoot based on eval gate decision.
+    """
+    if payload.event != "message_created":
+        return {"status": "ignored", "reason": f"event={payload.event}"}
+
+    if payload.message_type != "incoming":
+        return {"status": "ignored", "reason": "not incoming message"}
+
+    if not payload.content or not payload.content.strip():
+        return {"status": "ignored", "reason": "empty content"}
+
+    if payload.private:
+        return {"status": "ignored", "reason": "private note"}
+
+    if payload.id and _is_duplicate(payload.id):
+        logger.info("chatwoot_duplicate_webhook", message_id=payload.id)
+        return {"status": "duplicate", "message_id": payload.id}
+
+    conversation_id = payload.conversation.id if payload.conversation else None
+    if not conversation_id:
+        return {"status": "error", "reason": "no conversation_id"}
+
+    contact_email = payload.sender.email if payload.sender else None
+    contact_name = payload.sender.name if payload.sender else None
+
+    chat_request = ChatRequest(
+        message=payload.content,
+        conversation_id=str(conversation_id),
+        contact=ContactInfo(email=contact_email, name=contact_name)
+        if (contact_email or contact_name)
+        else None,
+        metadata={"channel": "chatwoot", "chatwoot_message_id": payload.id},
+    )
+
+    logger.info(
+        "chatwoot_webhook_processing",
+        conversation_id=conversation_id,
+        message_id=payload.id,
+    )
+
+    try:
+        result = await chat(chat_request)
+    except Exception as e:
+        logger.error(
+            "chatwoot_pipeline_error",
+            error=str(e),
+            conversation_id=conversation_id,
+        )
+        await _handle_pipeline_error(conversation_id, str(e))
+        return {"status": "error", "reason": str(e)}
+
+    await _dispatch_to_chatwoot(conversation_id, result)
+    return {"status": "processed", "decision": result.decision}
+
+
+async def _dispatch_to_chatwoot(conversation_id: int, result: ChatResponse) -> None:
+    """Send AI response to Chatwoot based on eval gate decision."""
+    from chatwoot.client import send_message, toggle_conversation_status, add_labels
+
+    try:
+        if result.decision == "send":
+            await send_message(conversation_id, result.response, private=False)
+
+        elif result.decision == "draft":
+            draft_note = (
+                f"**AI Draft (needs review)**\n\n"
+                f"Category: {result.category}\n"
+                f"Confidence: {result.confidence}\n\n"
+                f"---\n\n{result.response}"
+            )
+            await send_message(conversation_id, draft_note, private=True)
+            await toggle_conversation_status(conversation_id, "open")
+            await add_labels(conversation_id, ["ai_draft", result.category])
+
+        elif result.decision == "escalate":
+            escalation_note = (
+                f"**AI Escalation**\n\n"
+                f"Category: {result.category}\n"
+                f"Reason: {result.metadata.get('escalation_reason', 'eval_gate')}\n\n"
+                f"---\n\nAI draft:\n{result.response}"
+            )
+            await send_message(conversation_id, escalation_note, private=True)
+            await toggle_conversation_status(conversation_id, "open")
+            await add_labels(
+                conversation_id,
+                ["ai_escalation", result.category, "high_priority"],
+            )
+
+    except Exception as e:
+        logger.error(
+            "chatwoot_dispatch_error",
+            conversation_id=conversation_id,
+            decision=result.decision,
+            error=str(e),
+        )
+
+
+async def _handle_pipeline_error(conversation_id: int, error: str) -> None:
+    """Handle AI pipeline failure: notify agents via Chatwoot."""
+    from chatwoot.client import send_message, toggle_conversation_status, add_labels
+
+    try:
+        await send_message(
+            conversation_id,
+            f"**AI Error:** Pipeline failed: {error}\nPlease handle manually.",
+            private=True,
+        )
+        await toggle_conversation_status(conversation_id, "open")
+        await add_labels(conversation_id, ["ai_error"])
+    except Exception as e:
+        logger.error("chatwoot_error_handler_failed", error=str(e))

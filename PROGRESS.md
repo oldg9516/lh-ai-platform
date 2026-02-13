@@ -110,10 +110,30 @@
 
 ## Phase 2: Chatwoot (Omnichannel)
 
-- [ ] Deploy Chatwoot (docker-compose)
-- [ ] Website chat widget
-- [ ] Chatwoot webhook → AI Engine bridge
-- [ ] Agent inbox for human escalations
+### Infrastructure
+- [x] Deploy Chatwoot (4 containers: web, worker, postgres, redis) on port 3010
+- [x] Chatwoot API client module (chatwoot/client.py)
+- [x] Chatwoot env vars in config.py + .env.example
+
+### Webhook Bridge
+- [x] POST /api/webhook/chatwoot endpoint
+- [x] Webhook filtering (event, message_type, private, empty)
+- [x] Idempotency (in-memory dedup with TTL)
+- [x] Echo loop prevention (ignore outgoing messages)
+- [x] Decision dispatch: send → public, draft → private note + open, escalate → private note + labels
+- [x] Error handling: pipeline error → private note + open for agent
+
+### Testing
+- [x] Unit tests: 13 webhook tests (filtering, parsing, idempotency)
+- [x] All 86 unit tests passing
+
+### Documentation
+- [x] Setup guide (services/chatwoot/setup.md, Russian)
+- [x] Bot setup script (services/chatwoot/setup_bot.py)
+
+### Remaining
+- [ ] Website chat widget (Chatwoot JS embed on levhaolam.com)
+- [ ] Agent inbox configuration for human escalations
 - [ ] WhatsApp channel
 
 ---

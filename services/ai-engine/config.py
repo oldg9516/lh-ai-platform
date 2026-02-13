@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # Encryption
     cancel_link_password: str = ""
 
+    # Chatwoot (Omnichannel)
+    chatwoot_url: str = ""
+    chatwoot_api_token: str = ""
+    chatwoot_account_id: int = 1
+
     # App
     debug: bool = False
     log_level: str = "INFO"
