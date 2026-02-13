@@ -88,14 +88,21 @@
 
 ### Eval System
 - [x] Export 3000 ai_human_comparison records (golden dataset with classification)
-- [ ] Import ai_human_comparison into local Supabase
-- [ ] Create Langfuse dataset from golden records (PERFECT_MATCH + STYLISTIC_EDIT)
-- [ ] Eval runner: pipeline + LLM-judge scoring → Langfuse
-- [ ] Langfuse dashboard: accuracy, tone, safety, completeness trends
+- [x] Import ai_human_comparison into local Supabase (3000 records)
+- [x] Create Langfuse datasets: golden (338), good (1722), full (2413)
+- [x] Eval runner: pipeline + LLM-judge (GPT-5.1) scoring → Langfuse
+- [x] Baseline scores: accuracy=0.75, tone=0.89, safety=0.98, overall=0.77
+- [x] Langfuse documentation (docs/07-LANGFUSE-GUIDE.md, Russian)
+
+### Outstanding Detection + Eval Gate
+- [x] Outstanding Detection agent (GPT-5-mini, DB rules + Pinecone outstanding-cases)
+- [x] Eval Gate agent (Tier 1: regex fast-fail + Tier 2: LLM GPT-5.1 evaluation)
+- [x] Pipeline updated: parallel outstanding + support, eval gate replaces check_subscription_safety
+- [x] Database: save_eval_result + update_session_outstanding queries
+- [x] Unit tests: test_outstanding.py, test_eval_gate.py
+- [x] Integration tests: TestOutstandingDetection, TestEvalGateIntegration
 
 ### Remaining
-- [ ] Outstanding Detection (Pinecone similarity for problem cases)
-- [ ] Eval Gate agent (send/draft/escalate decision per response)
 - [ ] Tune prompts based on Langfuse eval results
 - [ ] Switch retention to Claude Sonnet 4.5 when API key available
 

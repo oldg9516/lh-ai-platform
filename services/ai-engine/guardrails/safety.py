@@ -51,6 +51,11 @@ def check_red_lines(message: str) -> dict:
 def check_subscription_safety(response: str) -> dict:
     """Post-process AI response to catch safety violations.
 
+    .. deprecated::
+        Replaced by :func:`agents.eval_gate.evaluate_response` which provides
+        the same regex checks (Tier 1) plus LLM-based evaluation (Tier 2).
+        Kept for backward compatibility and unit tests.
+
     Ensures AI never confirms cancellation, pause, or refund directly.
 
     Args:

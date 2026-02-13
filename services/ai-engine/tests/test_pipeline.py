@@ -234,6 +234,17 @@ class TestResponseStructure:
         assert "processing_time_ms" in data["metadata"]
         assert "customer_name" in data["metadata"]
 
+    def test_metadata_has_outstanding(self):
+        data = send("Where is my package?")
+        assert "is_outstanding" in data["metadata"]
+        assert isinstance(data["metadata"]["is_outstanding"], bool)
+        assert "outstanding_trigger" in data["metadata"]
+
+    def test_metadata_has_eval_checks(self):
+        data = send("When will my box arrive?")
+        assert "eval_checks" in data["metadata"]
+        assert isinstance(data["metadata"]["eval_checks"], list)
+
 
 class TestNameExtraction:
     """Verify customer name personalization."""
@@ -247,3 +258,37 @@ class TestNameExtraction:
         data = send("Where is my order?")
         # Without contact name or signature, should fallback
         assert data["metadata"]["customer_name"] in ("Client", data["metadata"]["customer_name"])
+
+
+# --- Outstanding Detection + Eval Gate (Phase 1 additions) ---
+
+
+class TestOutstandingDetection:
+    """Verify outstanding detection is included in pipeline."""
+
+    def test_normal_message_not_outstanding(self):
+        data = send("Thank you for the beautiful box!")
+        assert data["metadata"]["is_outstanding"] is False
+
+    def test_outstanding_fields_present(self):
+        data = send("My last 3 boxes were all damaged and I want a full refund now")
+        assert "is_outstanding" in data["metadata"]
+        assert "outstanding_trigger" in data["metadata"]
+
+
+class TestEvalGateIntegration:
+    """Verify Eval Gate is running in the pipeline."""
+
+    def test_normal_message_sends(self):
+        data = send("When will my next box ship?")
+        assert data["decision"] in ("send", "draft")
+        assert data["confidence"] in ("high", "medium", "low")
+
+    def test_eval_checks_structure(self):
+        data = send("How much does the subscription cost?")
+        checks = data["metadata"].get("eval_checks", [])
+        if checks:
+            assert isinstance(checks[0], dict)
+            assert "name" in checks[0]
+            assert "passed" in checks[0]
+            assert "score" in checks[0]

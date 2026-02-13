@@ -95,3 +95,46 @@ def save_message(data: dict[str, Any]) -> None:
         "processing_time_ms": data.get("processing_time_ms"),
     }
     get_client().table("chat_messages").insert(row).execute()
+
+
+def save_eval_result(data: dict[str, Any]) -> None:
+    """Insert an eval result into the eval_results table.
+
+    Args:
+        data: Eval result fields matching eval_results table schema.
+    """
+    row = {
+        "ticket_id": data.get("ticket_id"),
+        "request_subtype": data.get("request_subtype"),
+        "request_sub_subtype": data.get("request_sub_subtype"),
+        "decision": data["decision"],
+        "draft_reason": data.get("draft_reason"),
+        "confidence": data.get("confidence"),
+        "checks": data.get("checks"),
+        "overrides": data.get("overrides"),
+        "is_outstanding": data.get("is_outstanding", False),
+        "outstanding_trigger": data.get("outstanding_trigger"),
+        "auto_send_enabled": data.get("auto_send_enabled", False),
+    }
+    get_client().table("eval_results").insert(row).execute()
+
+
+def update_session_outstanding(
+    session_id: str,
+    is_outstanding: bool,
+    outstanding_trigger: str | None,
+    eval_decision: str,
+) -> None:
+    """Update a chat session with outstanding detection and eval results.
+
+    Args:
+        session_id: The session ID to update.
+        is_outstanding: Whether the case is outstanding.
+        outstanding_trigger: The trigger description.
+        eval_decision: Eval Gate decision (send/draft/escalate).
+    """
+    get_client().table("chat_sessions").update({
+        "is_outstanding": is_outstanding,
+        "outstanding_trigger": outstanding_trigger,
+        "eval_decision": eval_decision,
+    }).eq("session_id", session_id).execute()

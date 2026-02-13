@@ -1,6 +1,7 @@
 """FastAPI routes for the AI Engine.
 
-POST /api/chat — main pipeline: safety → classify+name → generate → cancel link → assemble → post-check → save.
+POST /api/chat — main pipeline: safety → classify+name → support+outstanding → cancel link
+                 → assemble → eval gate → save → respond.
 GET  /api/health — service health check.
 """
 
@@ -18,9 +19,11 @@ from agents.router import classify_message
 from agents.name_extractor import extract_customer_name
 from agents.support import create_support_agent
 from agents.response_assembler import assemble_response
-from guardrails.safety import check_red_lines, check_subscription_safety
+from agents.outstanding import detect_outstanding
+from agents.eval_gate import evaluate_response
+from guardrails.safety import check_red_lines
 from tools.retention import generate_cancel_link, inject_cancel_link
-from database.queries import save_session, save_message
+from database.queries import save_session, save_message, save_eval_result, update_session_outstanding
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -89,8 +92,8 @@ async def health_check():
 async def chat(request: ChatRequest):
     """Process a customer message through the AI pipeline.
 
-    Pipeline: red line → classify+name (parallel) → support agent → cancel link
-              → assemble → post-safety → save → respond.
+    Pipeline: red line → classify+name (parallel) → support+outstanding (parallel)
+              → cancel link → assemble → eval gate → save → respond.
     """
     start_time = time.time()
     session_id = request.session_id or f"sess_{uuid.uuid4().hex[:12]}"
@@ -124,13 +127,19 @@ async def chat(request: ChatRequest):
         extract_customer_name(request.message, contact_name),
     )
 
-    # Step 3: Generate response with Support Agent
-    # Include customer name in context for personalization
+    # Step 3: Support Agent + Outstanding Detection (parallel)
     agent_input = f"[Customer Name: {customer_name}]\n\n{request.message}"
-    try:
+
+    async def _run_support_agent() -> str:
         agent = create_support_agent(classification.primary)
         response = await agent.arun(agent_input)
-        ai_response = str(response.content)
+        return str(response.content)
+
+    try:
+        ai_response, outstanding_result = await asyncio.gather(
+            _run_support_agent(),
+            detect_outstanding(request.message, classification.primary),
+        )
     except Exception as e:
         logger.error("support_agent_error", error=str(e), category=classification.primary)
         return ChatResponse(
@@ -145,7 +154,7 @@ async def chat(request: ChatRequest):
             metadata={"error": str(e)},
         )
 
-    # Step 3.5: Cancel link injection (retention categories only)
+    # Step 4: Cancel link injection (retention categories only)
     is_retention = classification.primary in (
         "retention_primary_request",
         "retention_repeated_request",
@@ -156,13 +165,13 @@ async def chat(request: ChatRequest):
         )
         if customer_email:
             cancel_url = generate_cancel_link(
-                subscription_id="pending",  # real ID comes from tools in Phase 3
+                subscription_id="pending",
                 customer_email=customer_email,
             )
             if cancel_url:
                 ai_response = inject_cancel_link(ai_response, cancel_url)
 
-    # Step 3.6: Assemble response (greeting + opener + body + closer + sign-off)
+    # Step 5: Assemble response (greeting + opener + body + closer + sign-off)
     ai_response = assemble_response(
         raw_response=ai_response,
         customer_name=customer_name,
@@ -170,20 +179,29 @@ async def chat(request: ChatRequest):
         session_id=session_id,
     )
 
-    # Step 4: Post-processing safety check
-    safety_check = check_subscription_safety(ai_response)
-    decision = "draft" if not safety_check["is_safe"] else "send"
+    # Step 6: Eval Gate (replaces check_subscription_safety)
+    eval_result = await evaluate_response(
+        customer_message=request.message,
+        ai_response=ai_response,
+        category=classification.primary,
+        is_outstanding=outstanding_result.is_outstanding,
+    )
 
-    if not safety_check["is_safe"]:
+    decision = eval_result.decision
+    confidence = eval_result.confidence
+
+    if decision != "send":
         logger.warning(
-            "subscription_safety_violation",
+            "eval_gate_not_send",
             session_id=session_id,
-            violation=safety_check["violation"],
+            decision=decision,
+            confidence=confidence,
+            override_reason=eval_result.override_reason,
         )
 
     processing_time_ms = int((time.time() - start_time) * 1000)
 
-    # Step 5: Save to database (best effort)
+    # Step 7: Save to database (best effort)
     config = CATEGORY_CONFIG[classification.primary]
     try:
         save_session({
@@ -199,6 +217,12 @@ async def chat(request: ChatRequest):
             "eval_decision": decision,
             "first_response_time_ms": processing_time_ms,
         })
+        update_session_outstanding(
+            session_id=session_id,
+            is_outstanding=outstanding_result.is_outstanding,
+            outstanding_trigger=outstanding_result.trigger,
+            eval_decision=decision,
+        )
         save_message({
             "session_id": session_id,
             "role": "user",
@@ -215,6 +239,18 @@ async def chat(request: ChatRequest):
             "reasoning_effort": config.reasoning_effort,
             "processing_time_ms": processing_time_ms,
         })
+        save_eval_result({
+            "ticket_id": session_id,
+            "request_subtype": classification.primary,
+            "request_sub_subtype": classification.secondary,
+            "decision": decision,
+            "draft_reason": eval_result.override_reason,
+            "confidence": confidence,
+            "checks": [c.model_dump() for c in eval_result.checks],
+            "is_outstanding": outstanding_result.is_outstanding,
+            "outstanding_trigger": outstanding_result.trigger,
+            "auto_send_enabled": config.auto_send_phase <= 1,
+        })
     except Exception as e:
         logger.error("database_save_error", session_id=session_id, error=str(e))
 
@@ -223,13 +259,15 @@ async def chat(request: ChatRequest):
         session_id=session_id,
         category=classification.primary,
         decision=decision,
-        confidence="high",
+        confidence=confidence,
         metadata={
             "model_used": config.model,
             "reasoning_effort": config.reasoning_effort,
             "processing_time_ms": processing_time_ms,
-            "is_outstanding": False,
+            "is_outstanding": outstanding_result.is_outstanding,
+            "outstanding_trigger": outstanding_result.trigger,
             "secondary_category": classification.secondary,
             "customer_name": customer_name,
+            "eval_checks": [c.model_dump() for c in eval_result.checks],
         },
     )
