@@ -60,6 +60,7 @@ services:
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
       PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_DB_CHANNEL_ENABLED: "false"
     networks:
       - ai-platform-net
 
@@ -150,6 +151,7 @@ services:
       ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
       TELEMETRY_ENABLED: "false"
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+      LOG_LEVEL: "warn"
       # ClickHouse
       CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
       CLICKHOUSE_URL: http://langfuse-clickhouse:8123
