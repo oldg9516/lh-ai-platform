@@ -7,6 +7,7 @@ GET  /api/health           — service health check.
 """
 
 import asyncio
+import re
 import time
 import uuid
 
@@ -378,20 +379,30 @@ async def chatwoot_webhook(payload: ChatwootWebhookPayload):
     return {"status": "processed", "decision": result.decision}
 
 
+def _strip_html(text: str) -> str:
+    """Strip HTML tags and convert to plain text for chat display."""
+    text = re.sub(r"<br\s*/?>|</div>|</p>|</li>", "\n", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 async def _dispatch_to_chatwoot(conversation_id: int, result: ChatResponse) -> None:
     """Send AI response to Chatwoot based on eval gate decision."""
     from chatwoot.client import send_message, toggle_conversation_status, add_labels
 
+    clean_response = _strip_html(result.response)
+
     try:
         if result.decision == "send":
-            await send_message(conversation_id, result.response, private=False)
+            await send_message(conversation_id, clean_response, private=False)
 
         elif result.decision == "draft":
             draft_note = (
                 f"**AI Draft (needs review)**\n\n"
                 f"Category: {result.category}\n"
                 f"Confidence: {result.confidence}\n\n"
-                f"---\n\n{result.response}"
+                f"---\n\n{clean_response}"
             )
             await send_message(conversation_id, draft_note, private=True)
             await toggle_conversation_status(conversation_id, "open")
@@ -402,7 +413,7 @@ async def _dispatch_to_chatwoot(conversation_id: int, result: ChatResponse) -> N
                 f"**AI Escalation**\n\n"
                 f"Category: {result.category}\n"
                 f"Reason: {result.metadata.get('escalation_reason', 'eval_gate')}\n\n"
-                f"---\n\nAI draft:\n{result.response}"
+                f"---\n\nAI draft:\n{clean_response}"
             )
             await send_message(conversation_id, escalation_note, private=True)
             await toggle_conversation_status(conversation_id, "open")

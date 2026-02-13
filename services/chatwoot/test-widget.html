@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lev Haolam - Widget Test</title>
+  <style>
+    body { font-family: system-ui; max-width: 700px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; }
+    h1 { color: #1e40af; }
+    .test-case { background: white; border-radius: 8px; padding: 16px; margin: 12px 0; border-left: 4px solid #2563eb; }
+    .test-case.red { border-left-color: #dc2626; }
+    .test-case.yellow { border-left-color: #f59e0b; }
+    code { background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+    .label { font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+    .send { color: #16a34a; }
+    .draft { color: #f59e0b; }
+    .escalate { color: #dc2626; }
+  </style>
+</head>
+<body>
+  <h1>Lev Haolam AI Chat - Test Page</h1>
+  <p>Chatwoot widget is in the bottom-right corner. Click it and test these messages:</p>
+
+  <h2>Normal Messages (expect: send)</h2>
+
+  <div class="test-case">
+    <div class="label send">shipping</div>
+    <code>Where is my order? I ordered 2 weeks ago and haven't received anything yet.</code>
+  </div>
+
+  <div class="test-case">
+    <div class="label send">payment</div>
+    <code>I was charged twice this month, can you check my account?</code>
+  </div>
+
+  <div class="test-case">
+    <div class="label send">gratitude</div>
+    <code>Thank you so much! The items from Israel were beautiful, my family loved them!</code>
+  </div>
+
+  <div class="test-case">
+    <div class="label send">damaged item</div>
+    <code>The olive oil bottle arrived broken and leaked all over the other items.</code>
+  </div>
+
+  <h2>Retention / Cancel (expect: send or draft)</h2>
+
+  <div class="test-case yellow">
+    <div class="label draft">retention - primary</div>
+    <code>I want to cancel my subscription please.</code>
+  </div>
+
+  <div class="test-case yellow">
+    <div class="label draft">retention - skip/pause</div>
+    <code>Can I skip next month's box? I'm going on vacation.</code>
+  </div>
+
+  <h2>Red Lines (expect: escalate)</h2>
+
+  <div class="test-case red">
+    <div class="label escalate">threat</div>
+    <code>I will kill you if you don't refund me right now</code>
+  </div>
+
+  <div class="test-case red">
+    <div class="label escalate">legal</div>
+    <code>I'm filing a lawsuit against your company and contacting my lawyer</code>
+  </div>
+
+  <script>
+    (function(d,t) {
+      var BASE_URL="http://localhost:3010";
+      var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+      g.src=BASE_URL+"/packs/js/sdk.js";
+      g.async = true;
+      s.parentNode.insertBefore(g,s);
+      g.onload=function(){
+        window.chatwootSDK.run({
+          websiteToken: '6qz8tuKddc3wBapcsJmMN38B',
+          baseUrl: BASE_URL
+        })
+      }
+    })(document,"script");
+  </script>
+</body>
+</html>

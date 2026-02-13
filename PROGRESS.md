@@ -124,12 +124,18 @@
 - [x] Error handling: pipeline error → private note + open for agent
 
 ### Testing
-- [x] Unit tests: 13 webhook tests (filtering, parsing, idempotency)
-- [x] All 86 unit tests passing
+- [x] Unit tests: 20 webhook tests (filtering, parsing, idempotency, HTML stripping)
+- [x] All tests passing
 
 ### Documentation
 - [x] Setup guide (services/chatwoot/setup.md, Russian)
 - [x] Bot setup script (services/chatwoot/setup_bot.py)
+
+### E2E Verified
+- [x] Widget test page (services/chatwoot/test-widget.html)
+- [x] send → public message in widget (shipping, gratitude, retention)
+- [x] escalate → private note (payment outstanding, death threat)
+- [x] HTML stripping for chat display (agent responses use email-style HTML)
 
 ### Remaining
 - [ ] Website chat widget (Chatwoot JS embed on levhaolam.com)

@@ -8,7 +8,7 @@ AI-powered live chat platform for Lev Haolam customer support. Replaces email-on
 
 **Stack:** Agno AgentOS (Python 3.12) + Chatwoot (Omnichannel) + Langfuse (Observability & Eval) + PostgreSQL (Supabase) + Pinecone + Docker Compose
 
-**Current Phase:** Phase 0 complete (Foundation — AI Engine core). All 15 source files implemented, 10 containers healthy, full pipeline working. See `PROGRESS.md` for phase tracking.
+**Current Phase:** Phase 2 complete (Chatwoot Omnichannel). 16 containers (10 core + 4 Chatwoot + 2 Supabase Studio/Meta), full pipeline working end-to-end via Chatwoot widget. See `PROGRESS.md` for phase tracking.
 
 ## Commands
 
@@ -39,7 +39,9 @@ python database/import.py             # ai_answerer_instructions
 python database/import_threads.py     # support_threads_data
 ```
 
-**Note:** No tests/ directory exists yet — test infrastructure is Phase 1. When tests are added, run via: `docker compose exec ai-engine pytest tests/ -v`
+**Run tests:** `docker compose exec ai-engine pytest tests/ -v`
+
+**Chatwoot UI:** `open http://localhost:3010`
 
 ## Architecture
 
@@ -67,19 +69,39 @@ POST /api/chat
    - If agent fails → escalate response
        │
        ▼
-4. Post-safety check (check_subscription_safety)
-   - Blocks: confirmed cancellation, confirmed pause, confirmed refund
-   - If unsafe → override decision to "draft"
+4. Outstanding Detection (detect_outstanding) — parallel with step 3
+   - GPT-5-mini, DB rules + Pinecone outstanding-cases namespace
+   - Returns: is_outstanding, trigger, confidence
        │
        ▼
-5. Save to database (save_session, save_message)
+5. Eval Gate (evaluate_response)
+   - Tier 1: regex fast-fail (subscription safety)
+   - Tier 2: LLM GPT-5.1 evaluation (send/draft/escalate)
+       │
+       ▼
+6. Save to database (save_session, save_message, save_eval_result)
    - Non-blocking: errors logged but don't fail the response
        │
        ▼
-6. Return ChatResponse (response, category, decision, confidence)
+7. Return ChatResponse (response, category, decision, confidence)
 ```
 
-**Not yet implemented** (future phases): Outstanding Detection (Pinecone similarity), Eval Gate (send/draft/escalate scoring), action tools with HITL.
+### Chatwoot Webhook (api/routes.py)
+
+```
+POST /api/webhook/chatwoot
+       │
+       ▼
+1. Filter (event=message_created, type=incoming, not private, not empty)
+2. Dedup (in-memory TTL 5 min)
+3. Build ChatRequest → call chat() (same pipeline above)
+4. Dispatch by decision:
+   - send     → Chatwoot public message (client sees it)
+   - draft    → Chatwoot private note + open + labels
+   - escalate → Chatwoot private note + open + high_priority labels
+```
+
+**Not yet implemented** (future phases): action tools with HITL, multi-turn conversation history.
 
 ### Support Agent Factory
 
@@ -89,7 +111,7 @@ The Support Agent is **not** 10 separate agents — it's a single factory functi
 
 **Model selection:** Currently all categories use GPT-5.1. Retention categories have a TODO to switch to Claude Sonnet 4.5 when available.
 
-### Docker Services (10 containers)
+### Docker Services (16 containers)
 
 | Service | Port | Purpose |
 |---------|------|---------|
@@ -97,12 +119,18 @@ The Support Agent is **not** 10 separate agents — it's a single factory functi
 | supabase-db | 54322 | PostgreSQL 17 |
 | supabase-rest | — | PostgREST API adapter |
 | supabase-api | 54321 | Nginx reverse proxy for Supabase |
+| supabase-studio | 54323 | Supabase Studio UI |
+| supabase-meta | — | PostgreSQL metadata API |
 | langfuse-web | 3100 | Observability UI |
 | langfuse-worker | — | Async job processor |
 | langfuse-postgres | — | Langfuse database |
 | langfuse-clickhouse | — | Tracing analytics backend |
 | langfuse-redis | — | Langfuse cache |
 | langfuse-minio | — | S3-compatible object storage |
+| chatwoot-web | 3010 | Chatwoot omnichannel UI + API |
+| chatwoot-worker | — | Sidekiq background jobs |
+| chatwoot-postgres | — | Chatwoot database (pgvector) |
+| chatwoot-redis | — | Chatwoot cache |
 
 ### Database: Dual Pipeline
 
@@ -204,7 +232,9 @@ LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST
 CANCEL_LINK_PASSWORD
 ```
 
-Phase 2+ adds: `CHATWOOT_URL`, `CHATWOOT_API_TOKEN`, `CHATWOOT_ACCOUNT_ID`, `N8N_URL`, `N8N_API_KEY`
+Phase 2 (active): `CHATWOOT_URL`, `CHATWOOT_API_TOKEN`, `CHATWOOT_ACCOUNT_ID`, `CHATWOOT_SECRET_KEY_BASE`, `CHATWOOT_DB_PASSWORD`, `CHATWOOT_REDIS_PASSWORD`, `CHATWOOT_FRONTEND_URL`
+
+Phase 3+ adds: `N8N_URL`, `N8N_API_KEY`
 
 ## Reference Documents
 
@@ -227,4 +257,4 @@ If any step fails — fix the issue first, then re-run the checks. Never commit 
 
 ## Deployment
 
-Single server (same machine as n8n at n8n.diconsulting.pro). All services in one Docker Compose network (`ai-platform-net`). Exposed externally: `ai-engine:8000`, `chatwoot:3000` (Phase 2), `langfuse:3100` (internal only).
+Single server (same machine as n8n at n8n.diconsulting.pro). All services in one Docker Compose network (`ai-platform-net`). Exposed externally: `ai-engine:8000`, `chatwoot:3010`, `langfuse:3100` (internal only).

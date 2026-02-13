@@ -1,13 +1,13 @@
 """Unit tests for Chatwoot webhook handler.
 
-Tests webhook filtering, idempotency, and payload parsing.
+Tests webhook filtering, idempotency, payload parsing, and HTML stripping.
 No real AI calls — uses mocks for chat() and Chatwoot dispatch.
 """
 
 from fastapi.testclient import TestClient
 
 from main import app
-from api.routes import _processed_messages
+from api.routes import _processed_messages, _strip_html
 
 client = TestClient(app)
 
@@ -191,3 +191,51 @@ class TestIdempotency:
         # Both should be processed (not duplicate)
         assert resp1.json()["status"] != "duplicate"
         assert resp2.json()["status"] != "duplicate"
+
+
+# --- HTML Stripping ---
+
+
+class TestStripHtml:
+    """Verify HTML tags are stripped from AI responses for chat display."""
+
+    def test_strips_div_tags(self):
+        html = "<div>Dear Client,</div><div>Thank you!</div>"
+        assert _strip_html(html) == "Dear Client,\nThank you!"
+
+    def test_strips_br_tags(self):
+        html = "Line one<br>Line two<br/>Line three"
+        assert _strip_html(html) == "Line one\nLine two\nLine three"
+
+    def test_strips_nested_divs(self):
+        html = "<div><div>Hello</div><div>World</div></div>"
+        result = _strip_html(html)
+        assert "Hello" in result
+        assert "World" in result
+        assert "<" not in result
+
+    def test_strips_paragraph_tags(self):
+        html = "<p>First paragraph</p><p>Second paragraph</p>"
+        assert _strip_html(html) == "First paragraph\nSecond paragraph"
+
+    def test_collapses_multiple_newlines(self):
+        html = "<div>A</div><div></div><div></div><div>B</div>"
+        result = _strip_html(html)
+        assert "\n\n\n" not in result
+        assert "A" in result and "B" in result
+
+    def test_plain_text_unchanged(self):
+        text = "No HTML here, just plain text."
+        assert _strip_html(text) == text
+
+    def test_real_agent_response(self):
+        """Test with actual HTML format from email-style agent instructions."""
+        html = (
+            "<div>Dear Client,</div>"
+            "<div>I'd be happy to help with your shipment!</div>"
+            "<div><div>Your latest box is on the way.</div></div>"
+        )
+        result = _strip_html(html)
+        assert result.startswith("Dear Client,")
+        assert "happy to help" in result
+        assert "<div>" not in result
