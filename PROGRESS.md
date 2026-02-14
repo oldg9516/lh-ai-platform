@@ -180,7 +180,7 @@
 - [x] test_tool_registry.py — 8 тестов (реестр, resolve, CATEGORY_CONFIG sync)
 - [x] test_eval_gate.py — 3 новых теста на tools_available в промпте
 - [x] test_pipeline.py — интеграционные тесты обновлены с реальным email клиента из БД
-- [x] 197 тестов проходят (162 unit + 35 integration)
+- [x] 202 теста проходят (162 unit + 35 integration + 5 E2E multi-turn)
 
 ### Remaining
 - [ ] Реальные API вместо стабов для write-операций (Zoho, Pay, shipping provider)
@@ -206,7 +206,7 @@
 - [x] Загрузка истории в agent_input с разделителями `[Conversation History]` / `[End History]`
 - [x] Truncation ответов агента до 500 символов в истории
 - [x] 6 unit тестов (test_queries.py), 5 webhook тестов (session stability, channel model)
-- [ ] E2E: 2 сообщения с одним session_id — второе учитывает первое
+- [x] E2E: 5 multi-turn тестов (followup context, explicit reference, session isolation, truncation, history limit)
 
 ### Email через Chatwoot
 - [x] ChatwootConversation model + channel field
