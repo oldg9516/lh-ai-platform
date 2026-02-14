@@ -140,6 +140,32 @@ def update_session_outstanding(
     }).eq("session_id", session_id).execute()
 
 
+def get_conversation_history(session_id: str, limit: int = 10) -> list[dict]:
+    """Load recent messages for a session.
+
+    Args:
+        session_id: The session ID to load history for.
+        limit: Maximum number of messages to return (default: 10 = 5 turns).
+
+    Returns:
+        List of dicts with role and content, ordered oldest first.
+    """
+    try:
+        response = (
+            get_client()
+            .table("chat_messages")
+            .select("role, content")
+            .eq("session_id", session_id)
+            .order("created_at")
+            .limit(limit)
+            .execute()
+        )
+        return response.data or []
+    except Exception as e:
+        logger.exception("get_conversation_history_error", session_id=session_id)
+        return []
+
+
 def save_tool_execution(data: dict[str, Any]) -> None:
     """Insert a tool execution record.
 

@@ -104,7 +104,6 @@
 
 ### Remaining
 - [ ] Tune prompts based on Langfuse eval results
-- [ ] Switch retention to Claude Sonnet 4.5 when API key available
 
 ---
 
@@ -181,7 +180,7 @@
 - [x] test_tool_registry.py — 8 тестов (реестр, resolve, CATEGORY_CONFIG sync)
 - [x] test_eval_gate.py — 3 новых теста на tools_available в промпте
 - [x] test_pipeline.py — интеграционные тесты обновлены с реальным email клиента из БД
-- [x] 186 тестов проходят (151 unit + 35 integration)
+- [x] 197 тестов проходят (162 unit + 35 integration)
 
 ### Remaining
 - [ ] Реальные API вместо стабов для write-операций (Zoho, Pay, shipping provider)
@@ -194,17 +193,30 @@
 
 ---
 
-## Phase 4: Retention + Channels
+## Phase 4: Retention + Multi-turn + Email
 
-### Retention Agent
-- [ ] Claude Sonnet 4.5 for retention_primary_request + retention_repeated_request
-- [ ] Extended thinking for complex retention scenarios
-- [ ] Personalized retention offers (based on customer history)
+### Retention — reasoning_effort=medium
+- [x] GPT 5.1 + openai_responses + reasoning_effort="medium" для retention_primary_request и retention_repeated_request
+- [x] `_resolve_model()` передаёт reasoning_effort в OpenAIChat (agents/support.py)
 - [ ] Escalation flow: AI → Chatwoot (assign to human agent)
+
+### Multi-turn Conversation History
+- [x] Стабильный session_id для Chatwoot: `cw_{conversation_id}` (api/routes.py)
+- [x] `get_conversation_history(session_id, limit)` в database/queries.py
+- [x] Загрузка истории в agent_input с разделителями `[Conversation History]` / `[End History]`
+- [x] Truncation ответов агента до 500 символов в истории
+- [x] 6 unit тестов (test_queries.py), 5 webhook тестов (session stability, channel model)
+- [ ] E2E: 2 сообщения с одним session_id — второе учитывает первое
+
+### Email через Chatwoot
+- [x] ChatwootConversation model + channel field
+- [x] Channel detection из Chatwoot payload (api/routes.py)
+- [x] Email канал: HTML не стрипается (email поддерживает HTML нативно)
+- [x] Chat канал: HTML стрипается (как раньше)
+- [ ] Настройка Email inbox в Chatwoot UI (IMAP/SMTP)
 
 ### Multi-Channel
 - [ ] WhatsApp channel via Chatwoot
-- [ ] Email channel via Chatwoot (parallel with n8n pipeline)
 - [ ] Telegram bot via Chatwoot
 - [ ] Facebook Messenger via Chatwoot
 
@@ -238,7 +250,6 @@
 - [ ] Production monitoring via Langfuse + Agno Control Plane
 
 ### Advanced Features
-- [ ] Multi-turn conversation history (Chatwoot thread context)
 - [ ] Agno Teams: QA Agent + Escalation Agent
 - [ ] Agno Learning Machine: cross-user insights (transfer learning)
 - [ ] CRM integration for proactive support

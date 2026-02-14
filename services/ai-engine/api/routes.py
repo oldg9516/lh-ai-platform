@@ -25,7 +25,13 @@ from agents.outstanding import detect_outstanding
 from agents.eval_gate import evaluate_response
 from guardrails.safety import check_red_lines
 from tools.retention import generate_cancel_link, inject_cancel_link
-from database.queries import save_session, save_message, save_eval_result, update_session_outstanding
+from database.queries import (
+    get_conversation_history,
+    save_session,
+    save_message,
+    save_eval_result,
+    update_session_outstanding,
+)
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -134,6 +140,20 @@ async def chat(request: ChatRequest):
     agent_input_parts = [f"[Customer Name: {customer_name}]"]
     if customer_email:
         agent_input_parts.append(f"[Customer Email: {customer_email}]")
+
+    # Load conversation history for multi-turn context
+    history = get_conversation_history(session_id)
+    if history:
+        agent_input_parts.append("")
+        agent_input_parts.append("[Conversation History]")
+        for msg in history:
+            role = "Customer" if msg["role"] == "user" else "Agent"
+            content = msg["content"]
+            if role == "Agent" and len(content) > 500:
+                content = content[:500] + "..."
+            agent_input_parts.append(f"{role}: {content}")
+        agent_input_parts.append("[End History]")
+
     agent_input_parts.append("")
     agent_input_parts.append(request.message)
     agent_input = "\n".join(agent_input_parts)
@@ -313,6 +333,7 @@ class ChatwootConversation(BaseModel):
     id: int
     inbox_id: int | None = None
     status: str | None = None
+    channel: str | None = None
 
 
 class ChatwootWebhookPayload(BaseModel):
@@ -356,13 +377,17 @@ async def chatwoot_webhook(payload: ChatwootWebhookPayload):
     contact_email = payload.sender.email if payload.sender else None
     contact_name = payload.sender.name if payload.sender else None
 
+    # Detect channel from Chatwoot conversation metadata
+    channel = payload.conversation.channel if payload.conversation else "web"
+
     chat_request = ChatRequest(
         message=payload.content,
+        session_id=f"cw_{conversation_id}",
         conversation_id=str(conversation_id),
         contact=ContactInfo(email=contact_email, name=contact_name)
         if (contact_email or contact_name)
         else None,
-        metadata={"channel": "chatwoot", "chatwoot_message_id": payload.id},
+        metadata={"channel": channel, "chatwoot_message_id": payload.id},
     )
 
     logger.info(
@@ -382,7 +407,7 @@ async def chatwoot_webhook(payload: ChatwootWebhookPayload):
         await _handle_pipeline_error(conversation_id, str(e))
         return {"status": "error", "reason": str(e)}
 
-    await _dispatch_to_chatwoot(conversation_id, result)
+    await _dispatch_to_chatwoot(conversation_id, result, channel=channel)
     return {"status": "processed", "decision": result.decision}
 
 
@@ -394,11 +419,19 @@ def _strip_html(text: str) -> str:
     return text.strip()
 
 
-async def _dispatch_to_chatwoot(conversation_id: int, result: ChatResponse) -> None:
+async def _dispatch_to_chatwoot(
+    conversation_id: int,
+    result: ChatResponse,
+    channel: str = "web",
+) -> None:
     """Send AI response to Chatwoot based on eval gate decision."""
     from chatwoot.client import send_message, toggle_conversation_status, add_labels
 
-    clean_response = _strip_html(result.response)
+    # Email supports HTML natively; chat widget needs plain text
+    if channel == "email":
+        clean_response = result.response
+    else:
+        clean_response = _strip_html(result.response)
 
     try:
         if result.decision == "send":

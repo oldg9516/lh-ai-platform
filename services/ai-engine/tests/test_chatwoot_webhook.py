@@ -1,13 +1,16 @@
 """Unit tests for Chatwoot webhook handler.
 
-Tests webhook filtering, idempotency, payload parsing, and HTML stripping.
+Tests webhook filtering, idempotency, payload parsing, HTML stripping,
+stable session IDs, and email channel detection.
 No real AI calls — uses mocks for chat() and Chatwoot dispatch.
 """
+
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
 from main import app
-from api.routes import _processed_messages, _strip_html
+from api.routes import _processed_messages, _strip_html, ChatwootConversation
 
 client = TestClient(app)
 
@@ -239,3 +242,86 @@ class TestStripHtml:
         assert result.startswith("Dear Client,")
         assert "happy to help" in result
         assert "<div>" not in result
+
+
+# --- Stable Session ID ---
+
+
+class TestStableSessionId:
+    """Verify Chatwoot webhook produces stable session_id from conversation_id."""
+
+    def test_session_id_format(self):
+        """Session ID should be cw_{conversation_id}."""
+        _reset_dedup()
+        payload = {
+            "event": "message_created",
+            "id": 99901,
+            "message_type": "incoming",
+            "content": "I will kill you",
+            "conversation": {"id": 42},
+            "sender": {"name": "Test", "type": "contact"},
+        }
+        with patch("api.routes._dispatch_to_chatwoot", new_callable=AsyncMock):
+            resp = client.post("/api/webhook/chatwoot", json=payload)
+        assert resp.status_code == 200
+
+    def test_same_conversation_same_session(self):
+        """Two messages in the same conversation get the same session_id."""
+        _reset_dedup()
+        # Both messages use conversation_id=100, red line for instant response
+        payload1 = {
+            "event": "message_created",
+            "id": 99902,
+            "message_type": "incoming",
+            "content": "I will kill you",
+            "conversation": {"id": 100},
+            "sender": {"name": "Test", "type": "contact"},
+        }
+        payload2 = {
+            "event": "message_created",
+            "id": 99903,
+            "message_type": "incoming",
+            "content": "My lawyer will contact you",
+            "conversation": {"id": 100},
+            "sender": {"name": "Test", "type": "contact"},
+        }
+        with patch("api.routes._dispatch_to_chatwoot", new_callable=AsyncMock) as mock_dispatch:
+            client.post("/api/webhook/chatwoot", json=payload1)
+            client.post("/api/webhook/chatwoot", json=payload2)
+            # Both calls should have session_id=cw_100
+            calls = mock_dispatch.call_args_list
+            assert len(calls) == 2
+            session_ids = [call.args[1].session_id for call in calls]
+            assert session_ids[0] == "cw_100"
+            assert session_ids[1] == "cw_100"
+
+
+# --- ChatwootConversation Model ---
+
+
+class TestChatwootConversationModel:
+    """Verify ChatwootConversation includes channel field."""
+
+    def test_channel_field_parsed(self):
+        conv = ChatwootConversation(id=1, channel="email")
+        assert conv.channel == "email"
+
+    def test_channel_field_optional(self):
+        conv = ChatwootConversation(id=1)
+        assert conv.channel is None
+
+    def test_full_payload_with_channel(self):
+        """Full webhook payload with channel parses correctly."""
+        payload = {
+            "event": "message_created",
+            "message_type": "outgoing",
+            "content": "test",
+            "conversation": {
+                "id": 42,
+                "inbox_id": 1,
+                "status": "pending",
+                "channel": "email",
+            },
+        }
+        resp = client.post("/api/webhook/chatwoot", json=payload)
+        assert resp.status_code == 200

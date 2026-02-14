@@ -28,10 +28,11 @@ def _resolve_model(config: CategoryConfig):
     Returns:
         Agno model instance (OpenAIChat or Claude).
     """
-    if config.model_provider == "openai_chat":
-        return OpenAIChat(id=config.model)
-    elif config.model_provider == "openai_responses":
-        return OpenAIChat(id=config.model)
+    if config.model_provider in ("openai_chat", "openai_responses"):
+        kwargs: dict = {"id": config.model}
+        if config.reasoning_effort:
+            kwargs["reasoning_effort"] = config.reasoning_effort
+        return OpenAIChat(**kwargs)
     elif config.model_provider == "anthropic":
         return Claude(id=config.model)
     else:

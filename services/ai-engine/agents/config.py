@@ -84,19 +84,18 @@ CATEGORY_CONFIG: dict[str, CategoryConfig] = {
         pinecone_namespace="gratitude",
         auto_send_phase=1,
     ),
-    # TODO: Switch to Claude Sonnet 4.5 when ANTHROPIC_API_KEY is available
     "retention_primary_request": CategoryConfig(
         model="gpt-5.1",
-        model_provider="openai_chat",
-        reasoning_effort=None,
+        model_provider="openai_responses",
+        reasoning_effort="medium",
         tools=["get_subscription", "generate_cancel_link", "get_customer_history"],
         pinecone_namespace="retention",
         auto_send_phase=4,
     ),
     "retention_repeated_request": CategoryConfig(
         model="gpt-5.1",
-        model_provider="openai_chat",
-        reasoning_effort=None,
+        model_provider="openai_responses",
+        reasoning_effort="medium",
         tools=["get_subscription", "generate_cancel_link"],
         pinecone_namespace="retention",
         auto_send_phase=4,
