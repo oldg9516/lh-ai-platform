@@ -8,7 +8,7 @@ AI-powered live chat platform for Lev Haolam customer support. Replaces email-on
 
 **Stack:** Agno AgentOS (Python 3.12) + Chatwoot (Omnichannel) + Langfuse (Observability & Eval) + PostgreSQL (Supabase) + Pinecone + Docker Compose
 
-**Current Phase:** Phase 2 complete (Chatwoot Omnichannel). 16 containers (10 core + 4 Chatwoot + 2 Supabase Studio/Meta), full pipeline working end-to-end via Chatwoot widget. See `PROGRESS.md` for phase tracking.
+**Current Phase:** Phase 4 in progress (Retention + Multi-turn + Email). 16 containers (10 core + 4 Chatwoot + 2 Supabase Studio/Meta), full pipeline working end-to-end via Chatwoot widget and email. Phase 3 tools (customer identification, real data) complete. See `PROGRESS.md` for phase tracking.
 
 ## Commands
 
@@ -39,7 +39,14 @@ python database/import.py             # ai_answerer_instructions
 python database/import_threads.py     # support_threads_data
 ```
 
-**Run tests:** `docker compose exec ai-engine pytest tests/ -v`
+**Run tests:**
+```bash
+docker compose exec ai-engine pytest tests/ -v                           # all tests (202 total)
+docker compose exec ai-engine pytest tests/ -v --ignore=tests/test_pipeline.py  # unit only (162 tests, fast)
+docker compose exec ai-engine pytest tests/test_e2e_multiturn.py -v     # multi-turn E2E (5 tests)
+```
+
+**Test breakdown:** 162 unit + 35 integration + 5 E2E multi-turn = 202 tests passing
 
 **Chatwoot UI:** `open http://localhost:3010`
 
@@ -63,27 +70,43 @@ POST /api/chat
    - Returns: primary category, secondary, urgency, extracted email
        │
        ▼
-3. Support Agent (create_support_agent → agent.arun)
+3. Load conversation history (get_conversation_history)
+   - Last 10 messages (5 turns) for this session_id
+   - Agent responses truncated to 500 chars in history
+   - Manual prepending to agent_input (NOT Agno native sessions)
+       │
+       ▼
+4. Support Agent (create_support_agent → agent.arun)
    - Factory creates agent dynamically from CATEGORY_CONFIG
-   - Configures: model, instructions (from DB), Pinecone knowledge namespace
+   - Configures: model, reasoning_effort, tools, instructions (from DB), Pinecone knowledge namespace
+   - Customer email passed to enable tool lookups
    - If agent fails → escalate response
        │
        ▼
-4. Outstanding Detection (detect_outstanding) — parallel with step 3
+5. Outstanding Detection (detect_outstanding) — parallel with step 4
    - GPT-5-mini, DB rules + Pinecone outstanding-cases namespace
    - Returns: is_outstanding, trigger, confidence
        │
        ▼
-5. Eval Gate (evaluate_response)
-   - Tier 1: regex fast-fail (subscription safety)
-   - Tier 2: LLM GPT-5.1 evaluation (send/draft/escalate)
+6. Cancel link injection (retention categories only)
+   - AES-256-GCM encrypted link with customer email
        │
        ▼
-6. Save to database (save_session, save_message, save_eval_result)
+7. Response assembly (agents/response_assembler.py)
+   - Deterministic: greeting + opener + body + closer + sign-off in HTML divs
+       │
+       ▼
+8. Eval Gate (evaluate_response)
+   - Tier 1: regex fast-fail (subscription safety)
+   - Tier 2: LLM GPT-5.1 evaluation (send/draft/escalate)
+   - Receives tools_available context so tool-returned data passes accuracy check
+       │
+       ▼
+9. Save to database (save_session, save_message, save_eval_result)
    - Non-blocking: errors logged but don't fail the response
        │
        ▼
-7. Return ChatResponse (response, category, decision, confidence)
+10. Return ChatResponse (response, category, decision, confidence)
 ```
 
 ### Chatwoot Webhook (api/routes.py)
@@ -94,14 +117,21 @@ POST /api/webhook/chatwoot
        ▼
 1. Filter (event=message_created, type=incoming, not private, not empty)
 2. Dedup (in-memory TTL 5 min)
-3. Build ChatRequest → call chat() (same pipeline above)
-4. Dispatch by decision:
+3. Extract channel (Channel_Type enum: api_channel, web_widget, email, whatsapp, etc.)
+4. Build session_id: "cw_{conversation_id}" for stable multi-turn sessions
+5. Build ChatRequest → call chat() (same pipeline above)
+6. Dispatch by decision:
    - send     → Chatwoot public message (client sees it)
+                • Chat channels: HTML stripped for display
+                • Email channels: HTML preserved (native support)
    - draft    → Chatwoot private note + open + labels
    - escalate → Chatwoot private note + open + high_priority labels
+7. Error handling: pipeline error → private note + open for agent
 ```
 
-**Not yet implemented** (future phases): action tools with HITL, multi-turn conversation history.
+**Phase 3 complete:** 12 action tools (5 read-only with real DB data, 7 write stubs). Customer identification via normalized tables: customers, subscriptions, orders, tracking_events.
+
+**Phase 4 complete:** Multi-turn conversation history (manual, last 10 messages), reasoning_effort="medium" for retention, email channel support.
 
 ### Support Agent Factory
 
@@ -109,7 +139,7 @@ The Support Agent is **not** 10 separate agents — it's a single factory functi
 
 **10 categories:** shipping_or_delivery_question, payment_question, frequency_change_request, skip_or_pause_request, recipient_or_address_change, customization_request, damaged_or_leaking_item_report, gratitude, retention_primary_request, retention_repeated_request
 
-**Model selection:** Currently all categories use GPT-5.1. Retention categories have a TODO to switch to Claude Sonnet 4.5 when available.
+**Model selection:** All categories use GPT-5.1. Retention categories (`retention_primary_request`, `retention_repeated_request`) use `model_provider="openai_responses"` with `reasoning_effort="medium"` for deeper reasoning on complex cancellation scenarios.
 
 ### Docker Services (16 containers)
 
@@ -138,13 +168,30 @@ Both the existing n8n email pipeline and the new Agno chat platform:
 - **Read** prompts from `ai_answerer_instructions` (instruction_1..10, outstanding_rules, outstanding_hard_rules)
 - **Write** eval results to `eval_results`
 
-The new system adds tables: `chat_sessions`, `chat_messages`, `agent_traces`, `tool_executions`, `learning_records`. It does NOT write to `support_threads_data` or `support_dialogs` (email-only tables).
+The new system adds tables:
+- **Chat platform:** `chat_sessions`, `chat_messages`, `agent_traces`, `tool_executions`, `learning_records`
+- **Customer data (Phase 3):** `customers`, `subscriptions`, `orders`, `tracking_events` — normalized relational model for customer identification and tool lookups
+- **Legacy (n8n only):** `support_threads_data`, `support_dialogs` — read-only for historical data
 
-Connection: **supabase-py** (REST API) via `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Database schema auto-initializes from SQL files in `services/supabase/init/` (00-roles, 01-schema, 02-permissions, 03-views).
+**Customer Identification:** `database/customer_queries.py` provides 8 query functions: `lookup_customer`, `get_active_subscription_by_email`, `get_subscriptions_by_customer`, `get_orders_by_subscription`, `get_payment_history`, `get_tracking_events`, `get_box_info`, `get_customer_support_history`. Tools use these to fetch real customer data (962 customers, 649 subscriptions, 1826 orders, 268 tracking events imported from production).
+
+Connection: **supabase-py** (REST API) via `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Database schema auto-initializes from SQL files in `services/supabase/init/` (00-roles, 01-schema, 02-permissions, 03-views, 04-customers).
 
 ### Pinecone
 
 Index: `support-examples`. Per-category namespaces: `outstanding-cases`, `faq`, `retention`, `shipping`, `damage`, `subscription`, `customization`, `payment`, `gratitude`. Dimension: 1536, cosine metric, hybrid search enabled.
+
+### Multi-turn Conversation History (Phase 4)
+
+**Manual implementation** (NOT Agno native sessions due to bugs in SDK 2.x — see GitHub issues #2497, #2570):
+
+1. **Session ID:** Stable across conversation. Chatwoot uses `cw_{conversation_id}`, API fallback `sess_{uuid}`.
+2. **History loading:** `get_conversation_history(session_id, limit=10)` returns last 10 messages (5 turns).
+3. **Truncation:** Agent responses truncated to 500 chars in history to prevent context bloat.
+4. **Injection:** History prepended to agent_input as text with `[Conversation History]` / `[End History]` markers.
+5. **Format:** Each message as `Customer: <message>` or `Agent: <response>`.
+
+See `services/ai-engine/tests/test_e2e_multiturn.py` for multi-turn test scenarios (followup questions, explicit references, session isolation, history limits).
 
 ## Critical Safety Rules (NEVER VIOLATE)
 
@@ -174,9 +221,40 @@ The Dockerfile copies `services/ai-engine/` to `/app` inside the container. All 
 ```python
 from config import settings          # NOT from services.ai_engine.config
 from agents.router import classify_message
+from agents.support import create_support_agent
 from database.connection import get_client
+from database.queries import get_conversation_history, save_session, save_message
+from database.customer_queries import lookup_customer, get_active_subscription_by_email
 from guardrails.safety import check_red_lines
+from tools import resolve_tools, TOOL_REGISTRY
+from chatwoot.client import ChatwootClient
 ```
+
+### Action Tools (Phase 3)
+
+**12 tools** in `TOOL_REGISTRY` (`tools/__init__.py`):
+
+**Read-only (real data from DB):**
+- `get_subscription(email)` — active subscription details (next charge, frequency, status)
+- `get_customer_history(email)` — order history, tracking, support interactions
+- `get_payment_history(email)` — payment dates, amounts, methods
+- `track_package(email)` — tracking number, carrier, status, estimated delivery
+- `get_box_contents(email)` — products in last box
+
+**Write operations (stubs, return `pending_confirmation`):**
+- `change_frequency(email, new_frequency)` — monthly/bi-monthly/quarterly
+- `skip_month(email, month)` — skip one shipment
+- `pause_subscription(email, months)` — pause for N months
+- `change_address(email, new_address)` — update delivery address
+- `create_damage_claim(email, description)` — file damage report
+- `request_photos(email)` — ask customer for damage photos
+
+**Retention-specific:**
+- `generate_cancel_link(email)` — AES-256-GCM encrypted self-service cancel link
+
+**Tool resolution:** `resolve_tools(category_tools: list[str])` maps tool names from `CATEGORY_CONFIG.tools` to callable functions. Passed to `Agent(tools=[...])` in factory.
+
+**Customer not found:** Tools return `{"found": false, "message": "..."}` → AI asks for clarification → Eval Gate drafts (low accuracy).
 
 ### Agno SDK Patterns (verified against SDK 2.4.8)
 
@@ -199,27 +277,58 @@ vector_db = PineconeDb(
 )
 knowledge = Knowledge(vector_db=vector_db)
 
+# Basic agent
 agent = Agent(
     name="support_shipping",
     model=OpenAIChat(id="gpt-5.1"),
     instructions=["...loaded from DB..."],
     knowledge=knowledge,
-    search_knowledge=True,
+    search_knowledge=True,  # MUST set explicitly
+    tools=[get_subscription, track_package],  # resolved from TOOL_REGISTRY
 )
+
+# Reasoning effort — passed to OpenAIChat() constructor
+model = OpenAIChat(id="gpt-5.1", reasoning_effort="medium")  # "none" | "low" | "medium" | "high"
+agent = Agent(model=model, instructions=["..."])
 
 # Structured output — use output_schema (NOT response_model)
 agent = Agent(model=OpenAIChat(id="gpt-5.1"), output_schema=RouterOutput)
 
 # Run agent — async
-response = await agent.arun(message)  # response.content has the text
+response = await agent.arun(message)  # response.content has the text or Pydantic object
 
-# Tool with HITL approval (Phase 2+)
+# Tool with HITL approval (future Phase 6)
 from agno.tools import tool
 @tool(requires_confirmation=True)  # NOT needs_approval
-def pause_subscription(subscription_id: str) -> str: ...
+def pause_subscription(email: str, months: int) -> str: ...
 ```
 
-Agno doesn't have a generic custom guardrail base class. Safety checks are implemented as pre/post-processing functions called explicitly in the pipeline (see `guardrails/safety.py`).
+**Important gotchas:**
+- `reasoning_effort` is set on `OpenAIChat()`, NOT on `Agent()`
+- `arun()` takes a single string, not messages list. For multi-turn, prepend history manually or use `db=PostgresDb()` + `add_history_to_context=True` (currently avoided due to SDK bugs #2497, #2570)
+- `search_knowledge=True` must be set explicitly on Agent
+- Tool docstrings + type hints define the schema for LLM tool calling
+- Agno doesn't have a generic custom guardrail base class. Safety checks are implemented as pre/post-processing functions called explicitly in the pipeline (see `guardrails/safety.py`)
+
+### Response Assembly (agents/response_assembler.py)
+
+Email-style formatting for consistency with n8n legacy pipeline:
+
+```python
+from agents.response_assembler import assemble_response
+
+html_response = assemble_response(
+    agent_body="Here's your tracking info...",
+    customer_name="Sarah",  # from name_extractor or "Valued Customer"
+    category="shipping_or_delivery_question"
+)
+```
+
+**Structure:** `<div>Greeting</div> + <div>Opener</div> + <div>Body</div> + <div>Closer</div> + <div>Sign-off</div>`
+
+**Name extraction:** Fast path uses `contact_name` from Chatwoot. LLM path (GPT-5-mini) extracts from message signature. Fallback: "Valued Customer".
+
+**Cancel link injection:** For retention categories, `generate_cancel_link(email)` → encrypted link appended to closer div.
 
 ## Environment Variables
 
@@ -243,6 +352,9 @@ Phase 3+ adds: `N8N_URL`, `N8N_API_KEY`
 - [docs/03-TECH-SPEC.md](docs/03-TECH-SPEC.md) — Architecture decisions + CATEGORY_CONFIG
 - [docs/04-API-CONTRACT.md](docs/04-API-CONTRACT.md) — API endpoints and data formats
 - [docs/05-DATABASE-MIGRATIONS.md](docs/05-DATABASE-MIGRATIONS.md) — New tables and migration SQL
+- [docs/07-LANGFUSE-GUIDE.md](docs/07-LANGFUSE-GUIDE.md) — Langfuse observability setup (Russian)
+- [docs/LH-COMPANY.md](docs/LH-COMPANY.md) — Lev Haolam company overview, business model, mission, target audience (Russian) — useful context when tuning tone, understanding retention scenarios, and customer expectations
+- [.agents/skills/agno-sdk/SKILL.md](.agents/skills/agno-sdk/SKILL.md) — Project-specific Agno patterns, gotchas, tool registry, multi-turn implementation details
 
 ## Workflow: After Every Code Change
 

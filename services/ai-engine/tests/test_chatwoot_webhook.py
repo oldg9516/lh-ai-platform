@@ -5,6 +5,7 @@ stable session IDs, and email channel detection.
 No real AI calls — uses mocks for chat() and Chatwoot dispatch.
 """
 
+import pytest
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -325,3 +326,109 @@ class TestChatwootConversationModel:
         }
         resp = client.post("/api/webhook/chatwoot", json=payload)
         assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+class TestEscalationFlow:
+    """Verify escalation assigns to human agent when configured."""
+
+    async def test_escalate_assigns_agent_when_configured(self):
+        """Escalation should assign conversation to agent if assignee_id set."""
+        from unittest.mock import AsyncMock, patch
+        from api.routes import _dispatch_to_chatwoot
+        from config import settings
+        from api.routes import ChatResponse
+
+        result = ChatResponse(
+            response="Draft response",
+            session_id="test",
+            category="payment_question",
+            decision="escalate",
+            confidence="low",
+            actions_taken=[],
+            actions_pending=[],
+            metadata={"escalation_reason": "low_confidence"},
+        )
+
+        with (
+            patch("api.routes.send_message", new_callable=AsyncMock) as mock_send,
+            patch(
+                "api.routes.toggle_conversation_status", new_callable=AsyncMock
+            ) as mock_status,
+            patch("api.routes.add_labels", new_callable=AsyncMock) as mock_labels,
+            patch(
+                "api.routes.assign_conversation", new_callable=AsyncMock
+            ) as mock_assign,
+            patch.object(settings, "chatwoot_escalation_assignee_id", 5),
+        ):
+            await _dispatch_to_chatwoot(123, result)
+
+            mock_send.assert_called_once()
+            mock_status.assert_called_once_with(123, "open")
+            mock_labels.assert_called_once_with(
+                123, ["ai_escalation", "payment_question", "high_priority"]
+            )
+            mock_assign.assert_called_once_with(123, 5)
+
+    async def test_escalate_skips_assign_when_not_configured(self):
+        """Escalation should not assign if assignee_id not set."""
+        from unittest.mock import AsyncMock, patch
+        from api.routes import _dispatch_to_chatwoot
+        from config import settings
+        from api.routes import ChatResponse
+
+        result = ChatResponse(
+            response="Draft response",
+            session_id="test",
+            category="payment_question",
+            decision="escalate",
+            confidence="low",
+            actions_taken=[],
+            actions_pending=[],
+            metadata={},
+        )
+
+        with (
+            patch("api.routes.send_message", new_callable=AsyncMock),
+            patch("api.routes.toggle_conversation_status", new_callable=AsyncMock),
+            patch("api.routes.add_labels", new_callable=AsyncMock),
+            patch(
+                "api.routes.assign_conversation", new_callable=AsyncMock
+            ) as mock_assign,
+            patch.object(settings, "chatwoot_escalation_assignee_id", None),
+        ):
+            await _dispatch_to_chatwoot(123, result)
+
+            mock_assign.assert_not_called()
+
+    async def test_send_and_draft_do_not_assign(self):
+        """Send and draft decisions should not assign agent."""
+        from unittest.mock import AsyncMock, patch
+        from api.routes import _dispatch_to_chatwoot
+        from config import settings
+        from api.routes import ChatResponse
+
+        for decision in ["send", "draft"]:
+            result = ChatResponse(
+                response="Response",
+                session_id="test",
+                category="gratitude",
+                decision=decision,
+                confidence="high",
+                actions_taken=[],
+                actions_pending=[],
+                metadata={},
+            )
+
+            with (
+                patch("api.routes.send_message", new_callable=AsyncMock),
+                patch("api.routes.toggle_conversation_status", new_callable=AsyncMock),
+                patch("api.routes.add_labels", new_callable=AsyncMock),
+                patch(
+                    "api.routes.assign_conversation", new_callable=AsyncMock
+                ) as mock_assign,
+                patch.object(settings, "chatwoot_escalation_assignee_id", 5),
+            ):
+                await _dispatch_to_chatwoot(123, result)
+
+                mock_assign.assert_not_called()

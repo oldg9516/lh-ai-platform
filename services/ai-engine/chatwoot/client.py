@@ -112,3 +112,29 @@ async def add_labels(
     response = await client.post(url, json=payload)
     response.raise_for_status()
     return response.json()
+
+
+async def assign_conversation(
+    conversation_id: int,
+    assignee_id: int,
+) -> dict:
+    """Assign a conversation to a specific agent.
+
+    Args:
+        conversation_id: Chatwoot conversation ID.
+        assignee_id: Chatwoot agent user ID to assign to.
+
+    Returns:
+        Updated conversation dict.
+    """
+    client = _get_client()
+    url = f"{_account_prefix()}/conversations/{conversation_id}"
+    payload = {"assignee_id": assignee_id}
+    response = await client.patch(url, json=payload)
+    response.raise_for_status()
+    logger.info(
+        "chatwoot_conversation_assigned",
+        conversation_id=conversation_id,
+        assignee_id=assignee_id,
+    )
+    return response.json()

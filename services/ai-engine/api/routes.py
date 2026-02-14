@@ -25,6 +25,12 @@ from agents.outstanding import detect_outstanding
 from agents.eval_gate import evaluate_response
 from guardrails.safety import check_red_lines
 from tools.retention import generate_cancel_link, inject_cancel_link
+from chatwoot.client import (
+    send_message,
+    toggle_conversation_status,
+    add_labels,
+    assign_conversation,
+)
 from database.queries import (
     get_conversation_history,
     save_session,
@@ -425,8 +431,6 @@ async def _dispatch_to_chatwoot(
     channel: str = "web",
 ) -> None:
     """Send AI response to Chatwoot based on eval gate decision."""
-    from chatwoot.client import send_message, toggle_conversation_status, add_labels
-
     # Email supports HTML natively; chat widget needs plain text
     if channel == "email":
         clean_response = result.response
@@ -461,6 +465,11 @@ async def _dispatch_to_chatwoot(
                 conversation_id,
                 ["ai_escalation", result.category, "high_priority"],
             )
+            # Assign to human agent if configured
+            if settings.chatwoot_escalation_assignee_id:
+                await assign_conversation(
+                    conversation_id, settings.chatwoot_escalation_assignee_id
+                )
 
     except Exception as e:
         logger.error(
@@ -473,8 +482,6 @@ async def _dispatch_to_chatwoot(
 
 async def _handle_pipeline_error(conversation_id: int, error: str) -> None:
     """Handle AI pipeline failure: notify agents via Chatwoot."""
-    from chatwoot.client import send_message, toggle_conversation_status, add_labels
-
     try:
         await send_message(
             conversation_id,

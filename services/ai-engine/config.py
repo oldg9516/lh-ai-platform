@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     chatwoot_url: str = ""
     chatwoot_api_token: str = ""
     chatwoot_account_id: int = 1
+    chatwoot_escalation_assignee_id: int | None = None  # Agent ID to assign escalated conversations
 
     # App
     debug: bool = False

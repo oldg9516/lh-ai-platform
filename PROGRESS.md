@@ -180,7 +180,7 @@
 - [x] test_tool_registry.py — 8 тестов (реестр, resolve, CATEGORY_CONFIG sync)
 - [x] test_eval_gate.py — 3 новых теста на tools_available в промпте
 - [x] test_pipeline.py — интеграционные тесты обновлены с реальным email клиента из БД
-- [x] 202 теста проходят (162 unit + 35 integration + 5 E2E multi-turn)
+- [x] 211 тестов проходят (171 unit + 35 integration + 5 E2E multi-turn)
 
 ### Remaining
 - [ ] Реальные API вместо стабов для write-операций (Zoho, Pay, shipping provider)
@@ -198,7 +198,7 @@
 ### Retention — reasoning_effort=medium
 - [x] GPT 5.1 + openai_responses + reasoning_effort="medium" для retention_primary_request и retention_repeated_request
 - [x] `_resolve_model()` передаёт reasoning_effort в OpenAIChat (agents/support.py)
-- [ ] Escalation flow: AI → Chatwoot (assign to human agent)
+- [x] Escalation flow: AI → Chatwoot (assign to human agent via CHATWOOT_ESCALATION_ASSIGNEE_ID)
 
 ### Multi-turn Conversation History
 - [x] Стабильный session_id для Chatwoot: `cw_{conversation_id}` (api/routes.py)
