@@ -146,14 +146,35 @@
 
 ## Phase 3: Actions + Eval
 
-### Action Tools with HITL
+### Action Tools (Stubs) — 12 инструментов
 - [x] Cancel link generation (AES-256-GCM) — done in Phase 1
-- [ ] pause_subscription tool (Agno HITL: requires_confirmation=True)
-- [ ] skip_month tool
-- [ ] change_address tool
-- [ ] damage_claim tool (create claim + request photos)
+- [x] TOOL_REGISTRY (tools/__init__.py) + resolve_tools()
+- [x] Read-only: get_subscription, get_customer_history, get_payment_history (tools/customer.py)
+- [x] Read-only: track_package (tools/shipping.py)
+- [x] Read-only: get_box_contents (tools/customization.py)
+- [x] Write (pending_confirmation): change_frequency, skip_month, pause_subscription, change_address (tools/subscription.py)
+- [x] Write: create_damage_claim, request_photos (tools/damage.py)
+- [x] Support Agent wired: resolve_tools → Agent(tools=[...]) (agents/support.py)
+- [x] Customer email в agent input (api/routes.py)
+- [x] save_tool_execution() в database/queries.py
+- [x] Двухфазное выполнение write-операций: Phase A — tools возвращают `awaiting_customer_confirmation`
+
+### Eval Gate: Tool Context
+- [x] Eval gate принимает tools_available — список инструментов категории
+- [x] ACCURACY инструкции обновлены: данные от инструментов считаются достоверными
+- [x] _build_eval_prompt() включает контекст инструментов в промпт для LLM-judge
+- [x] E2E: shipping вопрос → track_package → eval gate send → ответ в виджете
+
+### Тесты
+- [x] test_tools.py — 23 теста на все stub-инструменты
+- [x] test_tool_registry.py — 8 тестов (реестр, resolve, CATEGORY_CONFIG sync)
+- [x] test_eval_gate.py — 3 новых теста на tools_available в промпте
+- [x] 130 unit тестов проходят
+
+### Remaining
 - [ ] Customer identification flow (email → Zoho/Supabase lookup)
-- [ ] Read-only tools: get_subscription, track_package, order_history
+- [ ] Реальные API вместо стабов (Zoho, Pay, shipping provider)
+- [ ] Phase B: UI формы подтверждения для write-операций (Phase 6)
 
 ### Eval & Experiments
 - [ ] Side-by-side model comparison in Langfuse (GPT-5.1 vs Claude on retention)
