@@ -19,7 +19,7 @@ from config import settings
 # Initialize knowledge base (using Pinecone instead of PgVector)
 vector_db = PineconeDb(
     name=settings.pinecone_index,
-    dimension=1536,
+    dimension=1024,  # Match existing support-examples index dimension
     metric="cosine",
     spec={"serverless": {"cloud": "aws", "region": "us-east-1"}},
     api_key=settings.pinecone_api_key,
