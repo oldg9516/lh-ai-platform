@@ -138,3 +138,22 @@ def update_session_outstanding(
         "outstanding_trigger": outstanding_trigger,
         "eval_decision": eval_decision,
     }).eq("session_id", session_id).execute()
+
+
+def save_tool_execution(data: dict[str, Any]) -> None:
+    """Insert a tool execution record.
+
+    Args:
+        data: Tool execution fields matching tool_executions table schema.
+    """
+    row = {
+        "session_id": data.get("session_id"),
+        "tool_name": data["tool_name"],
+        "tool_input": data.get("tool_input"),
+        "tool_output": data.get("tool_output"),
+        "requires_approval": data.get("requires_approval", False),
+        "status": data.get("status", "completed"),
+        "duration_ms": data.get("duration_ms"),
+        "error_message": data.get("error_message"),
+    }
+    get_client().table("tool_executions").insert(row).execute()

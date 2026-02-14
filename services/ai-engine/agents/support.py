@@ -14,6 +14,7 @@ from agno.models.anthropic import Claude
 from agents.config import CATEGORY_CONFIG, CategoryConfig
 from agents.instructions import load_instructions
 from knowledge.pinecone_client import create_knowledge
+from tools import resolve_tools
 
 logger = structlog.get_logger()
 
@@ -85,8 +86,11 @@ def create_support_agent(category: str) -> Agent:
         agent_kwargs["knowledge"] = knowledge
         agent_kwargs["search_knowledge"] = True
 
-    # Phase 0: no action tools yet (tools are Phase 2-3)
-    # agent_kwargs["tools"] = _resolve_tools(config.tools)
+    # Resolve action tools from CATEGORY_CONFIG
+    if config.tools:
+        resolved = resolve_tools(config.tools)
+        if resolved:
+            agent_kwargs["tools"] = resolved
 
     agent = Agent(**agent_kwargs)
 
@@ -96,6 +100,7 @@ def create_support_agent(category: str) -> Agent:
         model=config.model,
         model_provider=config.model_provider,
         has_knowledge=knowledge is not None,
+        tools_count=len(agent_kwargs.get("tools", [])),
     )
 
     return agent

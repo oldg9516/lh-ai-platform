@@ -130,7 +130,13 @@ async def chat(request: ChatRequest):
     )
 
     # Step 3: Support Agent + Outstanding Detection (parallel)
-    agent_input = f"[Customer Name: {customer_name}]\n\n{request.message}"
+    customer_email = request.contact.email if request.contact else classification.email
+    agent_input_parts = [f"[Customer Name: {customer_name}]"]
+    if customer_email:
+        agent_input_parts.append(f"[Customer Email: {customer_email}]")
+    agent_input_parts.append("")
+    agent_input_parts.append(request.message)
+    agent_input = "\n".join(agent_input_parts)
 
     async def _run_support_agent() -> str:
         agent = create_support_agent(classification.primary)
