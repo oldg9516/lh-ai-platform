@@ -1,12 +1,14 @@
-"""Shipping and tracking tools (stubs).
+"""Shipping and tracking tools.
 
-Returns realistic mock tracking data. In production, will integrate
-with DHL/USPS/Israel Post APIs.
+Queries normalized tracking_events and orders tables.
+Returns JSON strings consumed by the Support Agent.
 """
 
 import json
 
 import structlog
+
+from database.customer_queries import get_tracking_by_email
 
 logger = structlog.get_logger()
 
@@ -22,22 +24,38 @@ def track_package(customer_email: str) -> str:
 
     Returns:
         JSON string with tracking number, carrier, current status,
-        location, and estimated delivery date.
+        and tracking history.
     """
     logger.info("tool_called", tool="track_package", email=customer_email)
+
+    result = get_tracking_by_email(customer_email)
+    if not result:
+        return json.dumps({
+            "found": False,
+            "customer_email": customer_email,
+            "message": "No customer found with this email. Please ask the customer to verify their email address.",
+        })
+
+    if not result.get("tracking_number"):
+        return json.dumps({
+            "found": True,
+            "customer_email": customer_email,
+            "tracking": None,
+            "message": result.get("message", "No recent shipment with tracking found."),
+        })
+
+    tracking = result.get("tracking") or {}
+    order = result.get("order", {})
+
     return json.dumps({
-        "tracking_number": "LH2026021345IL",
-        "carrier": "Israel Post / USPS",
-        "status": "in_transit",
-        "status_description": "Package is in transit to destination country",
-        "shipped_date": "2026-02-05",
-        "estimated_delivery": "2026-02-20 to 2026-02-27",
-        "last_location": "JFK International Sorting Facility, New York",
-        "last_update": "2026-02-11",
-        "tracking_url": "https://track.levhaolam.com/LH2026021345IL",
-        "events": [
-            {"date": "2026-02-11", "location": "New York, US", "status": "Arrived at destination country"},
-            {"date": "2026-02-08", "location": "Tel Aviv, IL", "status": "Departed origin country"},
-            {"date": "2026-02-05", "location": "Kfar Maimon, IL", "status": "Shipped"},
-        ],
+        "found": True,
+        "customer_email": customer_email,
+        "tracking_number": result["tracking_number"],
+        "carrier": tracking.get("carrier"),
+        "delivery_status": tracking.get("delivery_status"),
+        "delivery_date": tracking.get("delivery_date"),
+        "history": tracking.get("history", []),
+        "shipped_date": order.get("shipping_date"),
+        "box_name": order.get("box_name"),
+        "box_sequence": order.get("box_sequence"),
     })

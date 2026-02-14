@@ -165,15 +165,26 @@
 - [x] _build_eval_prompt() включает контекст инструментов в промпт для LLM-judge
 - [x] E2E: shipping вопрос → track_package → eval gate send → ответ в виджете
 
+### Customer Identification Flow
+- [x] Нормализованные таблицы: customers, subscriptions, orders, tracking_events (04-customers.sql)
+- [x] ETL: import_customers.py — импорт из support_threads_data JSON → реляционная модель
+- [x] 962 клиента, 649 подписок, 1826 заказов, 268 tracking events импортировано
+- [x] database/customer_queries.py — 8 query-функций (lookup, subscriptions, orders, payments, tracking, history)
+- [x] Read-only tools подключены к БД: get_subscription, get_payment_history, get_customer_history, track_package, get_box_contents
+- [x] Customer not found → tool возвращает `{"found": false}`, AI просит уточнить email
+- [x] Eval gate корректно drafts при отсутствии данных клиента (accuracy/completeness low)
+- [x] E2E: реальные данные клиента в ответах (tracking number, next charge date, box info)
+
 ### Тесты
-- [x] test_tools.py — 23 теста на все stub-инструменты
+- [x] test_customer_queries.py — 22 теста (lookup, subscriptions, orders, payments, tracking, history + not found + errors)
+- [x] test_tools.py — 26 тестов (found/not found/error paths, mock DB layer)
 - [x] test_tool_registry.py — 8 тестов (реестр, resolve, CATEGORY_CONFIG sync)
 - [x] test_eval_gate.py — 3 новых теста на tools_available в промпте
-- [x] 130 unit тестов проходят
+- [x] test_pipeline.py — интеграционные тесты обновлены с реальным email клиента из БД
+- [x] 186 тестов проходят (151 unit + 35 integration)
 
 ### Remaining
-- [ ] Customer identification flow (email → Zoho/Supabase lookup)
-- [ ] Реальные API вместо стабов (Zoho, Pay, shipping provider)
+- [ ] Реальные API вместо стабов для write-операций (Zoho, Pay, shipping provider)
 - [ ] Phase B: UI формы подтверждения для write-операций (Phase 6)
 
 ### Eval & Experiments

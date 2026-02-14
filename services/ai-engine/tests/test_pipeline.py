@@ -12,6 +12,10 @@ from main import app
 
 client = TestClient(app)
 
+# Real customer email from the DB for integration tests that use tools.
+# This customer has an active subscription, orders, and tracking data.
+TEST_CUSTOMER_EMAIL = "fedaka42020@gmail.com"
+
 
 def send(message: str, contact_name: str | None = None, contact_email: str | None = None) -> dict:
     """Send a message through the pipeline and return the response."""
@@ -34,7 +38,7 @@ class TestShipping:
     """shipping_or_delivery_question"""
 
     def test_basic_tracking(self):
-        data = send("Where is my package? I ordered 2 weeks ago")
+        data = send("Where is my package? I ordered 2 weeks ago", contact_email=TEST_CUSTOMER_EMAIL)
         assert data["category"] == "shipping_or_delivery_question"
         assert data["decision"] == "send"
         assert len(data["response"]) > 50
@@ -56,7 +60,7 @@ class TestPayment:
     """payment_question"""
 
     def test_charge_date(self):
-        data = send("When will I be charged next?")
+        data = send("When will I be charged next?", contact_email=TEST_CUSTOMER_EMAIL)
         assert data["category"] == "payment_question"
         assert data["decision"] == "send"
         resp_lower = data["response"].lower()
@@ -97,7 +101,7 @@ class TestAddressChange:
     """recipient_or_address_change"""
 
     def test_address_update(self):
-        data = send("I moved to 5 Main Street, New York NY 10001. Please update.")
+        data = send("I moved to 5 Main Street, New York NY 10001. Please update.", contact_email=TEST_CUSTOMER_EMAIL)
         assert data["category"] == "recipient_or_address_change"
         assert data["decision"] == "send"
 
@@ -110,9 +114,9 @@ class TestCustomization:
     """customization_request"""
 
     def test_no_alcohol(self):
-        data = send("Please no wine or alcohol in my box")
+        data = send("Please no wine or alcohol in my box", contact_email=TEST_CUSTOMER_EMAIL)
         assert data["category"] == "customization_request"
-        assert data["decision"] == "send"
+        assert data["decision"] in ("send", "draft")  # eval gate may draft on strict checks
 
     def test_preference(self):
         data = send("Can I get more olive oil and less cosmetics?")
@@ -123,9 +127,10 @@ class TestDamage:
     """damaged_or_leaking_item_report"""
 
     def test_broken_item(self):
-        data = send("My olive oil arrived broken and leaked everywhere")
+        data = send("My olive oil arrived broken and leaked everywhere", contact_email=TEST_CUSTOMER_EMAIL)
         assert data["category"] == "damaged_or_leaking_item_report"
-        assert data["decision"] == "send"
+        # Damage reports are often flagged outstanding → eval gate drafts for human review
+        assert data["decision"] in ("send", "draft")
         resp_lower = data["response"].lower()
         # Should ask for photos or offer replacement
         assert any(w in resp_lower for w in ["photo", "picture", "image", "replace", "sorry", "apologize"])

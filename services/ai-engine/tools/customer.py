@@ -1,12 +1,18 @@
-"""Customer data lookup tools (stubs).
+"""Customer data lookup tools.
 
-All functions return realistic mock data. In production (Phase 4+),
-these will query Zoho CRM / Supabase for real customer records.
+Queries normalized customer tables (customers, subscriptions, orders).
+Returns JSON strings consumed by the Support Agent.
 """
 
 import json
 
 import structlog
+
+from database.customer_queries import (
+    get_active_subscription_by_email,
+    get_customer_history_by_email,
+    get_payment_history_by_email,
+)
 
 logger = structlog.get_logger()
 
@@ -25,28 +31,56 @@ def get_subscription(customer_email: str) -> str:
         next billing date, shipping address, and subscription ID.
     """
     logger.info("tool_called", tool="get_subscription", email=customer_email)
+
+    result = get_active_subscription_by_email(customer_email)
+    if not result:
+        return json.dumps({
+            "found": False,
+            "customer_email": customer_email,
+            "message": "No customer found with this email. Please ask the customer to verify their email address.",
+        })
+
+    customer = result["customer"]
+    sub = result.get("subscription")
+
+    if not sub:
+        return json.dumps({
+            "found": True,
+            "customer_email": customer["email"],
+            "customer_name": customer.get("name"),
+            "subscription": None,
+            "subscriptions_count": 0,
+            "message": "Customer found but has no subscriptions on record.",
+        })
+
     return json.dumps({
-        "subscription_id": "sub_LH_29847",
-        "customer_email": customer_email,
-        "customer_name": "Valued Customer",
-        "plan": "Lev Haolam Monthly Box",
-        "status": "active",
-        "frequency": "monthly",
-        "price_usd": 54.90,
-        "currency": "USD",
-        "next_billing_date": "2026-03-01",
-        "last_billing_date": "2026-02-01",
+        "found": True,
+        "customer_email": customer["email"],
+        "customer_name": customer.get("name"),
+        "customer_number": sub.get("customer_number"),
+        "status": sub.get("status", "Unknown"),
+        "frequency": sub.get("frequency", "Monthly"),
+        "price": float(sub["regular_box_price"]) if sub.get("regular_box_price") else None,
+        "price_currency": sub.get("price_currency", "USD"),
+        "next_billing_date": sub.get("next_payment_date"),
+        "billing_day": sub.get("billing_day"),
+        "start_date": sub.get("start_date"),
+        "no_alcohol": sub.get("no_alcohol", False),
+        "no_honey": sub.get("no_honey", False),
         "shipping_address": {
-            "line1": "123 Main Street",
-            "line2": "Apt 4B",
-            "city": "Brooklyn",
-            "state": "NY",
-            "zip": "11201",
-            "country": "US",
+            "street": customer.get("street"),
+            "line2": customer.get("address_line_2"),
+            "city": customer.get("city"),
+            "state": customer.get("state"),
+            "zip": customer.get("zip_code"),
+            "country": customer.get("country"),
         },
-        "created_at": "2024-06-15",
-        "total_boxes_received": 20,
-        "payment_method": "Visa ending in 4242",
+        "payment_method": sub.get("payment_method"),
+        "payment_method_id": sub.get("payment_method_id"),
+        "payment_expire_date": sub.get("payment_expire_date"),
+        "payer_name": sub.get("payer_name"),
+        "payer_email": sub.get("payer_email"),
+        "subscriptions_count": result["subscriptions_count"],
     })
 
 
@@ -61,34 +95,20 @@ def get_customer_history(customer_email: str) -> str:
         customer_email: The customer's email address.
 
     Returns:
-        JSON string with past support tickets, complaint count,
-        lifetime value, and subscription tenure.
+        JSON string with past orders, subscription tenure,
+        and order history summary.
     """
     logger.info("tool_called", tool="get_customer_history", email=customer_email)
-    return json.dumps({
-        "customer_email": customer_email,
-        "subscription_tenure_months": 20,
-        "total_boxes_received": 20,
-        "lifetime_value_usd": 1098.00,
-        "support_tickets_total": 3,
-        "recent_tickets": [
-            {
-                "date": "2026-01-10",
-                "category": "damaged_or_leaking_item_report",
-                "resolution": "replacement_sent",
-                "satisfied": True,
-            },
-            {
-                "date": "2025-08-22",
-                "category": "shipping_or_delivery_question",
-                "resolution": "tracking_provided",
-                "satisfied": True,
-            },
-        ],
-        "has_previous_cancel_request": False,
-        "loyalty_tier": "gold",
-        "average_csat": 4.5,
-    })
+
+    result = get_customer_history_by_email(customer_email)
+    if not result:
+        return json.dumps({
+            "found": False,
+            "customer_email": customer_email,
+            "message": "No customer found with this email. Please ask the customer to verify their email address.",
+        })
+
+    return json.dumps(result)
 
 
 def get_payment_history(customer_email: str, months: int = 6) -> str:
@@ -106,16 +126,13 @@ def get_payment_history(customer_email: str, months: int = 6) -> str:
         and payment status.
     """
     logger.info("tool_called", tool="get_payment_history", email=customer_email, months=months)
-    return json.dumps({
-        "customer_email": customer_email,
-        "payments": [
-            {"date": "2026-02-01", "amount_usd": 54.90, "status": "paid", "method": "Visa ending in 4242"},
-            {"date": "2026-01-01", "amount_usd": 54.90, "status": "paid", "method": "Visa ending in 4242"},
-            {"date": "2025-12-01", "amount_usd": 54.90, "status": "paid", "method": "Visa ending in 4242"},
-            {"date": "2025-11-01", "amount_usd": 54.90, "status": "paid", "method": "Visa ending in 4242"},
-            {"date": "2025-10-01", "amount_usd": 54.90, "status": "paid", "method": "Visa ending in 4242"},
-            {"date": "2025-09-01", "amount_usd": 54.90, "status": "paid", "method": "Visa ending in 4242"},
-        ],
-        "next_charge_date": "2026-03-01",
-        "next_charge_amount_usd": 54.90,
-    })
+
+    result = get_payment_history_by_email(customer_email, months=months)
+    if not result:
+        return json.dumps({
+            "found": False,
+            "customer_email": customer_email,
+            "message": "No customer found with this email. Please ask the customer to verify their email address.",
+        })
+
+    return json.dumps(result)
