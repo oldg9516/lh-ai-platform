@@ -95,7 +95,8 @@ EVAL_GATE_INSTRUCTIONS = [
     "",
     "3. ACCURACY:",
     "   - Information is factually plausible",
-    "   - No made-up tracking numbers, dates, or policies",
+    "   - Data returned by tool calls (tracking numbers, dates, subscription details, claim IDs) is real — treat it as accurate",
+    "   - No made-up information that did NOT come from a tool call",
     "",
     "4. COMPLETENESS:",
     "   - Addresses the customer's actual question",
@@ -113,6 +114,7 @@ def _build_eval_prompt(
     ai_response: str,
     category: str,
     is_outstanding: bool,
+    tools_available: list[str] | None = None,
 ) -> str:
     """Build the evaluation prompt for the Eval Gate."""
     outstanding_note = ""
@@ -120,9 +122,18 @@ def _build_eval_prompt(
         outstanding_note = (
             "\n**OUTSTANDING CASE — be extra strict. When in doubt, 'draft'.**\n"
         )
+    tools_note = ""
+    if tools_available:
+        tools_note = (
+            f"\nTOOLS AVAILABLE TO AGENT: {', '.join(tools_available)}\n"
+            "The agent had access to these tools and may have called them. "
+            "Any data in the response that matches tool output (tracking numbers, "
+            "dates, subscription details, claim IDs) should be considered accurate.\n"
+        )
     return (
         f"CATEGORY: {category}\n"
-        f"OUTSTANDING: {is_outstanding}{outstanding_note}\n\n"
+        f"OUTSTANDING: {is_outstanding}{outstanding_note}\n"
+        f"{tools_note}\n"
         f"CUSTOMER MESSAGE:\n{customer_message}\n\n"
         f"AI RESPONSE TO EVALUATE:\n{ai_response}"
     )
@@ -133,6 +144,7 @@ async def evaluate_response(
     ai_response: str,
     category: str,
     is_outstanding: bool = False,
+    tools_available: list[str] | None = None,
 ) -> EvalGateOutput:
     """Evaluate an AI response through the Eval Gate.
 
@@ -145,6 +157,7 @@ async def evaluate_response(
         ai_response: AI-generated response to evaluate.
         category: Classified category.
         is_outstanding: Whether this is an outstanding case.
+        tools_available: List of tool names available to the agent for this category.
 
     Returns:
         EvalGateOutput with decision, confidence, and detailed checks.
@@ -176,7 +189,7 @@ async def evaluate_response(
             output_schema=EvalGateOutput,
             markdown=False,
         )
-        prompt = _build_eval_prompt(customer_message, ai_response, category, is_outstanding)
+        prompt = _build_eval_prompt(customer_message, ai_response, category, is_outstanding, tools_available)
         response = await agent.arun(prompt)
         result = response.content
 

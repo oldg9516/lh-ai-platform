@@ -146,3 +146,36 @@ class TestBuildEvalPrompt:
         )
         assert "OUTSTANDING: True" in prompt
         assert "extra strict" in prompt
+
+    def test_tools_available_included(self):
+        prompt = _build_eval_prompt(
+            customer_message="Where is my order?",
+            ai_response="Your tracking number is LH2026021345IL.",
+            category="shipping_or_delivery_question",
+            is_outstanding=False,
+            tools_available=["get_subscription", "track_package"],
+        )
+        assert "TOOLS AVAILABLE TO AGENT" in prompt
+        assert "get_subscription" in prompt
+        assert "track_package" in prompt
+        assert "considered accurate" in prompt
+
+    def test_no_tools_no_note(self):
+        prompt = _build_eval_prompt(
+            customer_message="Thanks!",
+            ai_response="You're welcome!",
+            category="gratitude",
+            is_outstanding=False,
+            tools_available=None,
+        )
+        assert "TOOLS AVAILABLE" not in prompt
+
+    def test_empty_tools_no_note(self):
+        prompt = _build_eval_prompt(
+            customer_message="Thanks!",
+            ai_response="You're welcome!",
+            category="gratitude",
+            is_outstanding=False,
+            tools_available=[],
+        )
+        assert "TOOLS AVAILABLE" not in prompt

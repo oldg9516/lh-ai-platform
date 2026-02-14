@@ -188,11 +188,13 @@ async def chat(request: ChatRequest):
     )
 
     # Step 6: Eval Gate (replaces check_subscription_safety)
+    config = CATEGORY_CONFIG[classification.primary]
     eval_result = await evaluate_response(
         customer_message=request.message,
         ai_response=ai_response,
         category=classification.primary,
         is_outstanding=outstanding_result.is_outstanding,
+        tools_available=config.tools or None,
     )
 
     decision = eval_result.decision
@@ -210,7 +212,6 @@ async def chat(request: ChatRequest):
     processing_time_ms = int((time.time() - start_time) * 1000)
 
     # Step 7: Save to database (best effort)
-    config = CATEGORY_CONFIG[classification.primary]
     try:
         save_session({
             "session_id": session_id,
