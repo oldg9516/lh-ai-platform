@@ -286,7 +286,9 @@
 
 ## Phase 6: Generative UI + HITL (Human-in-the-Loop)
 
-**См. документацию:** [docs/08-COPILOTKIT-GENERATIVE-UI.md](docs/08-COPILOTKIT-GENERATIVE-UI.md)
+**См. документацию:**
+- [docs/08-COPILOTKIT-GENERATIVE-UI.md](docs/08-COPILOTKIT-GENERATIVE-UI.md)
+- [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — детальный анализ Phase 6-10 + Agno Learning Machine
 
 ### Phase 6.1: CopilotKit Prototype (2 недели)
 - [ ] Setup CopilotKit в новом React app (services/frontend)
@@ -336,7 +338,9 @@
 
 ## Phase 7: Architecture Refactoring
 
-**См. документацию:** [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md)
+**См. документацию:**
+- [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md)
+- [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — детальный анализ Phase 6-10 + Agno Learning Machine
 
 ### Context & Conversation
 - [ ] Context Builder (agents/context_builder.py):
@@ -385,7 +389,9 @@
 
 ## Phase 8: Multi-Agent Teams
 
-**См. документацию:** [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md#phase-8-multi-agent-teams)
+**См. документацию:**
+- [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md#phase-8-multi-agent-teams)
+- [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — детальный анализ Phase 6-10 + Agno Learning Machine
 
 ### Team Architecture
 - [ ] agents/teams.py:
@@ -410,7 +416,9 @@
 
 ## Phase 9: AI Ops & Continuous Learning
 
-**См. документацию:** [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md#priority-3-ai-ops--learning-ongoing)
+**См. документацию:**
+- [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md#priority-3-ai-ops--learning-ongoing)
+- [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — детальный анализ Phase 6-10 + Agno Learning Machine (критические находки: Learning Machine НЕ для self-improvement, dual-track strategy)
 
 ### AI Ops Dashboard
 - [ ] services/analytics/ai_ops.py:
