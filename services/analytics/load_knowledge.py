@@ -13,8 +13,15 @@ from pathlib import Path
 
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pineconedb import PineconeDb
+from agno.knowledge.embedder.openai import OpenAIEmbedder
 
 from config import settings
+
+# Custom embedder with 1024 dimensions to match Pinecone index
+embedder = OpenAIEmbedder(
+    id="text-embedding-3-large",
+    dimensions=1024,  # Reduce from default 3072 to match index
+)
 
 # Initialize knowledge base (using Pinecone instead of PgVector)
 vector_db = PineconeDb(
@@ -25,6 +32,7 @@ vector_db = PineconeDb(
     api_key=settings.pinecone_api_key,
     namespace="analytics-knowledge",
     use_hybrid_search=True,
+    embedder=embedder,  # Explicitly set embedder to generate 1024-dim vectors
 )
 knowledge = Knowledge(vector_db=vector_db)
 

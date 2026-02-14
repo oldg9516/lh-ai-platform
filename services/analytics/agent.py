@@ -5,6 +5,7 @@ from agno.models.openai import OpenAIChat
 from agno.tools.postgres import PostgresTools
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pineconedb import PineconeDb
+from agno.knowledge.embedder.openai import OpenAIEmbedder
 
 from config import settings
 
@@ -18,6 +19,12 @@ postgres_tools = PostgresTools(
     password=settings.db_password,
 )
 
+# Custom embedder with 1024 dimensions to match Pinecone index
+embedder = OpenAIEmbedder(
+    id="text-embedding-3-large",
+    dimensions=1024,  # Reduce from default 3072 to match index
+)
+
 # Knowledge Base with table schemas + sample queries + business rules
 # Using Pinecone instead of PgVector (pgvector extension not installed in Supabase)
 vector_db = PineconeDb(
@@ -28,6 +35,7 @@ vector_db = PineconeDb(
     api_key=settings.pinecone_api_key,
     namespace="analytics-knowledge",  # Separate namespace for analytics KB
     use_hybrid_search=True,
+    embedder=embedder,  # Explicitly set embedder to generate 1024-dim vectors
 )
 knowledge = Knowledge(vector_db=vector_db)
 
