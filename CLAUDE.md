@@ -8,7 +8,7 @@ AI-powered live chat platform for Lev Haolam customer support. Replaces email-on
 
 **Stack:** Agno AgentOS (Python 3.12) + Chatwoot (Omnichannel) + Langfuse (Observability & Eval) + PostgreSQL (Supabase) + Pinecone + Docker Compose
 
-**Current Phase:** Phase 4 in progress (Retention + Multi-turn + Email). 16 containers (10 core + 4 Chatwoot + 2 Supabase Studio/Meta), full pipeline working end-to-end via Chatwoot widget and email. Phase 3 tools (customer identification, real data) complete. See `PROGRESS.md` for phase tracking.
+**Current Phase:** Phase 5 complete (AgentOS Analytics Service). 17 containers (11 core + 4 Chatwoot + 2 Supabase Studio/Meta), full pipeline working end-to-end via Chatwoot widget and email. Phase 4 complete (multi-turn, retention reasoning, email channel). See `PROGRESS.md` for phase tracking.
 
 ## Commands
 
@@ -37,6 +37,12 @@ open http://localhost:3100
 # Import data into local Supabase
 python database/import.py             # ai_answerer_instructions
 python database/import_threads.py     # support_threads_data
+
+# Analytics Service (Phase 5)
+docker compose exec analytics python load_knowledge.py  # Load analytics KB to Pinecone
+curl http://localhost:9000/api/health                    # Analytics health check
+curl http://localhost:9000/api/metrics/overview          # Get platform metrics
+open http://os.agno.com                                  # AgentOS Control Plane (requires AGNO_API_KEY)
 ```
 
 **Run tests:**
@@ -133,6 +139,46 @@ POST /api/webhook/chatwoot
 
 **Phase 4 complete:** Multi-turn conversation history (manual, last 10 messages), reasoning_effort="medium" for retention, email channel support.
 
+**Phase 5 complete:** AgentOS Analytics Service with triple access pattern (see below).
+
+### Analytics Service (Phase 5)
+
+**Triple Access Pattern:**
+
+1. **AgentOS Control Plane** (os.agno.com)
+   - Native UI for chatting with analytics agent
+   - Auto-sync to cloud via `AGNO_API_KEY`
+   - Langfuse integration for tracing
+
+2. **Custom FastAPI Endpoints** (localhost:9000)
+   - `/api/metrics/overview` — resolution rate, escalation rate, category distribution
+   - `/api/metrics/categories` — per-category stats
+   - `/api/charts/category-distribution` — Plotly JSON for visualization
+   - `/api/query` — natural language SQL via PostgresTools agent
+
+3. **Langfuse Observability** (localhost:3100)
+   - Separate project: "Analytics Agent"
+   - Traces all SQL queries + LLM calls
+   - Debugging analytics agent behavior
+
+**Architecture:**
+
+```python
+# services/analytics/agent.py
+analytics_agent = Agent(
+    name="analytics_agent",
+    model=OpenAIChat(id="gpt-5-mini"),  # Cheap model for SQL
+    tools=[PostgresTools(host=..., port=..., db_name=..., user=..., password=...)],
+    knowledge=Knowledge(vector_db=PineconeDb(..., namespace="analytics-knowledge")),
+    search_knowledge=True,
+    instructions=[...],  # PostgreSQL-specific guidance
+)
+```
+
+**PostgresTools:** Natural language → SQL queries. Requires separate connection parameters (host, port, db_name, user, password) — does NOT accept `db_url` directly. Use `urllib.parse.urlparse()` to extract components.
+
+**Knowledge Base:** Table schemas, sample queries, business rules loaded into Pinecone `analytics-knowledge` namespace via `load_knowledge.py`.
+
 ### Support Agent Factory
 
 The Support Agent is **not** 10 separate agents — it's a single factory function (`create_support_agent(category)` in `agents/support.py`) that dynamically configures model, reasoning effort, tools, Pinecone namespace, and instructions based on `CATEGORY_CONFIG` (defined in `agents/config.py`).
@@ -141,11 +187,12 @@ The Support Agent is **not** 10 separate agents — it's a single factory functi
 
 **Model selection:** All categories use GPT-5.1. Retention categories (`retention_primary_request`, `retention_repeated_request`) use `model_provider="openai_responses"` with `reasoning_effort="medium"` for deeper reasoning on complex cancellation scenarios.
 
-### Docker Services (16 containers)
+### Docker Services (17 containers)
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| ai-engine | 8000 | FastAPI + Agno agents |
+| ai-engine | 8000 | FastAPI + Agno agents (main support pipeline) |
+| analytics | 9000 | AgentOS Analytics Service (PostgresTools + natural language SQL) |
 | supabase-db | 54322 | PostgreSQL 17 |
 | supabase-rest | — | PostgREST API adapter |
 | supabase-api | 54321 | Nginx reverse proxy for Supabase |
@@ -179,7 +226,32 @@ Connection: **supabase-py** (REST API) via `SUPABASE_URL` + `SUPABASE_SERVICE_RO
 
 ### Pinecone
 
-Index: `support-examples`. Per-category namespaces: `outstanding-cases`, `faq`, `retention`, `shipping`, `damage`, `subscription`, `customization`, `payment`, `gratitude`. Dimension: 1536, cosine metric, hybrid search enabled.
+Index: `support-examples`. Per-category namespaces: `outstanding-cases`, `faq`, `retention`, `shipping`, `damage`, `subscription`, `customization`, `payment`, `gratitude`, `analytics-knowledge`. Dimension: 1536 (main), 1024 (analytics), cosine metric, hybrid search enabled.
+
+**CRITICAL: Embedding Dimension Configuration**
+
+The `dimension` parameter on `PineconeDb()` only sets the index dimension for validation — it does NOT control the embedding model dimension. Without an explicit embedder, Agno defaults to `OpenAIEmbedder(id="text-embedding-3-large")` which generates **1536-dimensional** vectors.
+
+For indexes with different dimensions (e.g., analytics uses 1024), you MUST explicitly pass an embedder:
+
+```python
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+
+# For 1024-dimensional index
+embedder = OpenAIEmbedder(
+    id="text-embedding-3-large",
+    dimensions=1024,  # Reduce from default 3072 to match index
+)
+
+vector_db = PineconeDb(
+    name="support-examples",
+    dimension=1024,
+    namespace="analytics-knowledge",
+    embedder=embedder,  # Explicitly set to generate 1024-dim vectors
+)
+```
+
+**Symptom if misconfigured:** `Vector dimension 1536 does not match the dimension of the index 1024`
 
 ### Multi-turn Conversation History (Phase 4)
 
@@ -266,6 +338,7 @@ from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pineconedb import PineconeDb
 
 # Knowledge via PineconeDb (NOT "PineconeKnowledge" — that class doesn't exist)
+# For standard 1536-dimensional embeddings
 vector_db = PineconeDb(
     name="support-examples",
     dimension=1536,
@@ -273,6 +346,18 @@ vector_db = PineconeDb(
     spec={"serverless": {"cloud": "aws", "region": "us-east-1"}},
     api_key=settings.pinecone_api_key,
     namespace="shipping",
+    use_hybrid_search=True,
+)
+knowledge = Knowledge(vector_db=vector_db)
+
+# For custom embedding dimensions (e.g., analytics uses 1024)
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+embedder = OpenAIEmbedder(id="text-embedding-3-large", dimensions=1024)
+vector_db = PineconeDb(
+    name="support-examples",
+    dimension=1024,
+    namespace="analytics-knowledge",
+    embedder=embedder,  # MUST explicitly set to match index dimension
     use_hybrid_search=True,
 )
 knowledge = Knowledge(vector_db=vector_db)
@@ -309,6 +394,7 @@ def pause_subscription(email: str, months: int) -> str: ...
 - `search_knowledge=True` must be set explicitly on Agent
 - Tool docstrings + type hints define the schema for LLM tool calling
 - Agno doesn't have a generic custom guardrail base class. Safety checks are implemented as pre/post-processing functions called explicitly in the pipeline (see `guardrails/safety.py`)
+- **Pinecone dimension mismatch:** The `dimension` parameter on `PineconeDb()` only validates index dimension — it does NOT control embedding model dimension. Always explicitly set `embedder=OpenAIEmbedder(dimensions=N)` if your index uses non-default dimensions (see Pinecone section above)
 
 ### Response Assembly (agents/response_assembler.py)
 
@@ -345,6 +431,8 @@ Phase 2 (active): `CHATWOOT_URL`, `CHATWOOT_API_TOKEN`, `CHATWOOT_ACCOUNT_ID`, `
 
 Phase 3+ adds: `N8N_URL`, `N8N_API_KEY`
 
+Phase 5 (analytics): `ANALYTICS_DB_URL` (read-only PostgreSQL connection), `AGNO_API_KEY` (optional, for AgentOS Control Plane sync)
+
 ## Reference Documents
 
 - [docs/01-PRD.md](docs/01-PRD.md) — Product requirements
@@ -353,6 +441,8 @@ Phase 3+ adds: `N8N_URL`, `N8N_API_KEY`
 - [docs/04-API-CONTRACT.md](docs/04-API-CONTRACT.md) — API endpoints and data formats
 - [docs/05-DATABASE-MIGRATIONS.md](docs/05-DATABASE-MIGRATIONS.md) — New tables and migration SQL
 - [docs/07-LANGFUSE-GUIDE.md](docs/07-LANGFUSE-GUIDE.md) — Langfuse observability setup (Russian)
+- [docs/08-COPILOTKIT-GENERATIVE-UI.md](docs/08-COPILOTKIT-GENERATIVE-UI.md) — Phase 6: CopilotKit + AG-UI protocol for HITL forms (Russian)
+- [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — Phase 6-10 roadmap + Agno Learning Machine analysis: personalization vs self-improvement, dual-track strategy (Russian)
 - [docs/LH-COMPANY.md](docs/LH-COMPANY.md) — Lev Haolam company overview, business model, mission, target audience (Russian) — useful context when tuning tone, understanding retention scenarios, and customer expectations
 - [.agents/skills/agno-sdk/SKILL.md](.agents/skills/agno-sdk/SKILL.md) — Project-specific Agno patterns, gotchas, tool registry, multi-turn implementation details
 
