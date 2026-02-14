@@ -1,0 +1,111 @@
+{
+  "metrics": {
+    "resolution_rate": {
+      "definition": "Percentage of chat sessions resolved automatically by AI without human intervention",
+      "formula": "(sessions with eval_decision='send' / total sessions) * 100",
+      "target": "> 70%",
+      "sql_filter": "eval_decision = 'send'",
+      "interpretation": {
+        "excellent": "> 80%",
+        "good": "70-80%",
+        "acceptable": "50-70%",
+        "needs_improvement": "< 50%"
+      }
+    },
+    "escalation_rate": {
+      "definition": "Percentage of sessions escalated to human agents due to complexity, safety issues, or low confidence",
+      "formula": "(sessions with eval_decision='escalate' / total sessions) * 100",
+      "target": "< 15%",
+      "sql_filter": "eval_decision = 'escalate'",
+      "interpretation": {
+        "excellent": "< 10%",
+        "good": "10-15%",
+        "acceptable": "15-25%",
+        "needs_improvement": "> 25%"
+      }
+    },
+    "draft_rate": {
+      "definition": "Percentage of sessions where AI generated a draft requiring human review before sending",
+      "formula": "(sessions with eval_decision='draft' / total sessions) * 100",
+      "target": "10-20%",
+      "sql_filter": "eval_decision = 'draft'",
+      "interpretation": {
+        "too_low": "< 5% (may indicate eval gate is too lenient)",
+        "good": "5-20%",
+        "too_high": "> 20% (may indicate eval gate is too strict)"
+      }
+    },
+    "avg_response_time": {
+      "definition": "Average time for AI to generate first response (in milliseconds)",
+      "formula": "AVG(first_response_time_ms)",
+      "target": "< 5000 ms",
+      "sql_column": "first_response_time_ms",
+      "interpretation": {
+        "excellent": "< 3000 ms",
+        "good": "3000-5000 ms",
+        "acceptable": "5000-10000 ms",
+        "needs_improvement": "> 10000 ms"
+      }
+    },
+    "outstanding_detection_rate": {
+      "definition": "Percentage of sessions where outstanding customer detection was triggered",
+      "formula": "(sessions with is_outstanding=true / total sessions) * 100",
+      "target": "5-10%",
+      "sql_filter": "is_outstanding = true",
+      "interpretation": {
+        "note": "Should align with actual outstanding customer percentage in database. If significantly higher/lower, review detection rules."
+      }
+    },
+    "multi_turn_rate": {
+      "definition": "Percentage of sessions with multiple messages (conversation continuation)",
+      "formula": "(sessions with total_messages > 2 / total sessions) * 100",
+      "target": "20-30%",
+      "sql_filter": "total_messages > 2",
+      "interpretation": {
+        "low": "< 15% (customers may be getting answers quickly, or not engaging)",
+        "good": "15-30%",
+        "high": "> 30% (may indicate AI responses need clarification)"
+      }
+    }
+  },
+  "category_benchmarks": {
+    "shipping_or_delivery_question": {
+      "expected_resolution_rate": "> 85%",
+      "reason": "Well-defined domain with clear answers from tracking data"
+    },
+    "payment_question": {
+      "expected_resolution_rate": "> 80%",
+      "reason": "Straightforward queries with data from payment history"
+    },
+    "retention_primary_request": {
+      "expected_resolution_rate": "50-60%",
+      "reason": "Complex emotional context, higher escalation expected"
+    },
+    "retention_repeated_request": {
+      "expected_resolution_rate": "< 30%",
+      "reason": "Repeated retention attempts should escalate to human"
+    },
+    "damaged_or_leaking_item_report": {
+      "expected_resolution_rate": "60-70%",
+      "reason": "Requires HITL for damage claims, but AI can triage"
+    },
+    "gratitude": {
+      "expected_resolution_rate": "> 95%",
+      "reason": "Simple acknowledgment responses"
+    }
+  },
+  "alert_thresholds": {
+    "resolution_rate_drop": {
+      "condition": "resolution_rate < 60% for 3 consecutive days",
+      "action": "Alert: Review recent eval gate failures and agent performance"
+    },
+    "escalation_spike": {
+      "condition": "escalation_rate > 25% in last 24 hours",
+      "action": "Alert: Investigate sudden increase in complex queries or system issues"
+    },
+    "slow_response_time": {
+      "condition": "avg_response_time_ms > 10000 for last hour",
+      "action": "Alert: Check LLM API latency and system health"
+    }
+  }
+}

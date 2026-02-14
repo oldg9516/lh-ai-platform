@@ -1,0 +1,65 @@
+{
+  "table": "agent_traces",
+  "description": "Agent execution traces from Langfuse. Contains detailed performance metrics, model usage, and cost data for each AI agent run.",
+  "columns": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "description": "Primary key, auto-generated UUID"
+    },
+    {
+      "name": "trace_id",
+      "type": "text",
+      "description": "Langfuse trace ID for correlation with observability platform"
+    },
+    {
+      "name": "session_id",
+      "type": "text",
+      "description": "Foreign key to chat_sessions.session_id"
+    },
+    {
+      "name": "agent_name",
+      "type": "text",
+      "description": "Agent name. Typically 'support_{category}' like 'support_shipping'"
+    },
+    {
+      "name": "model_name",
+      "type": "text",
+      "description": "LLM model used: gpt-5.1, gpt-5-mini, claude-sonnet-4-5, etc."
+    },
+    {
+      "name": "total_tokens",
+      "type": "integer",
+      "description": "Total tokens consumed (input + output)"
+    },
+    {
+      "name": "cost_usd",
+      "type": "numeric",
+      "description": "Estimated cost in USD based on model pricing"
+    },
+    {
+      "name": "duration_ms",
+      "type": "integer",
+      "description": "Agent execution time in milliseconds"
+    },
+    {
+      "name": "tools_used",
+      "type": "jsonb",
+      "description": "Array of tool names called during execution. Example: ['get_subscription', 'track_package']"
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "description": "Trace timestamp with timezone"
+    }
+  ],
+  "indexes": [
+    "trace_id",
+    "session_id",
+    "created_at"
+  ],
+  "sample_queries": [
+    "-- Average cost per category\nSELECT s.primary_category, AVG(t.cost_usd) as avg_cost FROM agent_traces t JOIN chat_sessions s ON t.session_id = s.session_id GROUP BY s.primary_category;",
+    "-- Slow agent runs (>10 seconds)\nSELECT session_id, agent_name, duration_ms FROM agent_traces WHERE duration_ms > 10000 ORDER BY duration_ms DESC;"
+  ]
+}

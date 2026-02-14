@@ -1,0 +1,44 @@
+{
+  "table": "chat_messages",
+  "description": "Individual messages in chat sessions. Contains both customer messages (role='user') and agent responses (role='assistant'). Used for conversation analysis and multi-turn tracking.",
+  "columns": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "description": "Primary key, auto-generated UUID"
+    },
+    {
+      "name": "session_id",
+      "type": "text",
+      "description": "Foreign key to chat_sessions.session_id. Groups messages by conversation."
+    },
+    {
+      "name": "role",
+      "type": "text",
+      "description": "Message role: 'user' (customer) or 'assistant' (AI agent)"
+    },
+    {
+      "name": "content",
+      "type": "text",
+      "description": "Message text content. For agent responses, may be truncated to 500 chars in conversation history."
+    },
+    {
+      "name": "tokens",
+      "type": "integer",
+      "description": "Token count for this message. Used for cost tracking."
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "description": "Message timestamp with timezone"
+    }
+  ],
+  "indexes": [
+    "session_id",
+    "created_at"
+  ],
+  "sample_queries": [
+    "-- Average messages per session\nSELECT AVG(message_count) FROM (SELECT session_id, COUNT(*) as message_count FROM chat_messages GROUP BY session_id) sub;",
+    "-- Multi-turn conversations (>2 messages)\nSELECT session_id, COUNT(*) as messages FROM chat_messages GROUP BY session_id HAVING COUNT(*) > 2 ORDER BY messages DESC;"
+  ]
+}

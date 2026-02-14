@@ -22,6 +22,38 @@ services:
       retries: 3
     restart: unless-stopped
 
+  analytics:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    container_name: analytics
+    ports:
+      - "9000:9000"
+    environment:
+      - ANALYTICS_DB_URL=postgresql://analytics_readonly:analytics_pass@supabase-db:5432/postgres
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_INDEX=${PINECONE_INDEX:-support-examples}
+      # Separate Langfuse project for analytics
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_ANALYTICS_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_ANALYTICS_SECRET_KEY}
+      - LANGFUSE_HOST=http://langfuse-web:3000
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_healthy
+    networks:
+      - ai-platform-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
   # --- Supabase (Local Database) ---
 
   supabase-db:

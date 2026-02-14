@@ -222,39 +222,257 @@
 
 ---
 
-## Phase 5: Agno Dash Analytics
+## Phase 5: AgentOS Analytics Service
 
-### Setup
-- [ ] Deploy Agno Dash (docker: python + agno + dash, port 9000)
-- [ ] Connect read-only to Supabase PostgreSQL
-- [ ] UI via AgentOS Control Plane (os.agno.com)
+### Infrastructure
+- [x] Analytics service (Python 3.12 + Agno + FastAPI, port 9000)
+- [x] Read-only PostgreSQL user (analytics_readonly) в services/supabase/init/05-analytics-user.sql
+- [x] Docker integration: analytics service в docker-compose.yml
+- [x] Env vars: ANALYTICS_DB_URL, PINECONE_API_KEY, LANGFUSE_ANALYTICS_* keys
+- [x] Health check endpoint: http://localhost:9000/api/health
 
-### Knowledge Base
-- [ ] Table schemas: tables/support_threads_data.json, chat_sessions.json, etc.
-- [ ] Business rules: metrics.json (Resolution rate, AI vs Human), categories.json
-- [ ] Query patterns: resolution_rate.sql, ai_vs_human.sql, funnel.sql, stuck.sql
-- [ ] Load knowledge: `python -m dash.scripts.load_knowledge`
+### Triple Access Pattern
+- [x] **AgentOS Control Plane** (self-hosted): http://localhost:9000/ — chat UI для exploratory analytics
+- [x] **Custom FastAPI endpoints**: /metrics/*, /charts/*, /query — pre-computed метрики + Plotly JSON
+- [x] **Langfuse (separate project)**: http://localhost:3100 — observability для SQL queries (manual: создать "Analytics Agent" project)
 
-### Analytics Capabilities
-- [ ] Natural language queries → SQL → insights ("Сколько тикетов AI обработал за неделю?")
-- [ ] Learning Machine: SQL errors → auto-fix → never repeat
-- [ ] 6 context layers: schema, rules, queries, docs, learnings, runtime
+### Analytics Agent
+- [x] agent.py: OpenAIChat(gpt-5-mini) + PostgresTools + Pinecone knowledge
+- [x] PostgresTools config: использует отдельные параметры (host, port, db_name, user, password)
+- [x] Knowledge base: Pinecone namespace "analytics-knowledge" (PgVector не установлен в Supabase)
+- [x] Pinecone версия 5.4.2 (Agno SDK не совместим с v6+), pinecone-text для hybrid search
+
+### Knowledge Base Content
+- [x] knowledge/schemas/ — table schemas JSON (chat_sessions, chat_messages, agent_traces)
+- [x] knowledge/queries/ — sample SQL (resolution_rate.sql, category_breakdown.sql, customer_patterns.sql)
+- [x] knowledge/rules/metrics.json — metric definitions, formulas, targets, thresholds
+- [ ] Load knowledge: `docker exec analytics python load_knowledge.py`
+
+### Custom FastAPI Endpoints
+- [x] api/metrics.py: /metrics/overview, /metrics/categories, /metrics/customer-patterns
+- [x] api/charts.py: /charts/category-distribution, /charts/resolution-trend, /charts/eval-decision-breakdown
+- [x] api/query.py: POST /query — natural language → SQL via analytics agent
+- [x] database/queries.py: direct SQL functions (get_resolution_rate, get_category_breakdown, get_daily_trends)
+
+### Key Metrics (Phase 5 MVP)
+- [x] AI Performance: resolution_rate (>70%), escalation_rate (<15%), draft_rate (10-20%), avg_response_time (<5000ms)
+- [x] Category Analytics: category distribution, trends, performance per category, outstanding detection %
+- [x] Customer Insights: repeat issues, session length, multi-turn conversations, CSAT scores
+
+### Documentation
+- [x] services/analytics/README.md — setup guide, API reference, troubleshooting
+- [ ] PROGRESS.md updated (Phase 5 completion)
+- [ ] Test endpoints: curl /metrics/overview, /charts/*, /query
+
+### Remaining
+- [ ] Test natural language queries через Control Plane UI
+- [ ] Create Langfuse "Analytics Agent" project (manual в UI, Settings → Projects)
+- [ ] Optional: custom dashboards в Langfuse для SQL query performance
 
 ---
 
-## Phase 6: Scale + Production
+## Phase 6: Generative UI + HITL (Human-in-the-Loop)
 
-### Auto-Send Expansion
-- [ ] Auto-send on all safe categories (EvalGate per category thresholds)
-- [ ] Cost optimization (cheap models for simple categories)
-- [ ] Production monitoring via Langfuse + Agno Control Plane
+**См. документацию:** [docs/08-COPILOTKIT-GENERATIVE-UI.md](docs/08-COPILOTKIT-GENERATIVE-UI.md)
 
-### Advanced Features
-- [ ] Agno Teams: QA Agent + Escalation Agent
-- [ ] Agno Learning Machine: cross-user insights (transfer learning)
-- [ ] CRM integration for proactive support
-- [ ] n8n email pipeline → gradual migration to Agno
+### Phase 6.1: CopilotKit Prototype (2 недели)
+- [ ] Setup CopilotKit в новом React app (services/frontend)
+- [ ] Реализовать AG-UI streaming endpoint (/api/copilot) с SSE
+- [ ] Создать первую HITL форму: PauseSubscriptionForm (pause_subscription tool)
+- [ ] Интеграция с Chatwoot widget (iframe embedding)
+- [ ] E2E тест: Chatwoot → pause request → форма → user confirmation → Zoho API
+
+### Phase 6.2: Full HITL Implementation (3 недели)
+- [ ] HITL формы для всех write-операций:
+  - [ ] ChangeAddressForm (change_address)
+  - [ ] DamageClaimForm (create_damage_claim + photo upload)
+  - [ ] SkipMonthForm (skip_month)
+  - [ ] FrequencyChangeForm (change_frequency)
+- [ ] File upload для damage claims (S3/MinIO integration)
+- [ ] Интеграция с реальными API:
+  - [ ] Zoho CRM (pause, skip, frequency change)
+  - [ ] Pay API (payment method updates)
+  - [ ] Shipping provider API (address validation)
+- [ ] Audit logging: tool_executions с confirmation_timestamp, user_approved
+- [ ] Tool confirmations: update tools/subscription.py, tools/damage.py с @tool(requires_confirmation=True)
+
+### Phase 6.3: Informational Widgets (2 недели)
+- [ ] Read-only компоненты (no confirmation needed):
+  - [ ] TrackingCard (track_package → карточка с картой и прогресс-баром)
+  - [ ] OrderHistoryTable (get_customer_history → таблица с фильтрами)
+  - [ ] BoxContentsCard (get_box_contents → список продуктов)
+  - [ ] PaymentHistoryCard (get_payment_history → timeline)
+- [ ] A2UI для виджетов (агент генерирует JSON → фронтенд рендерит)
+- [ ] Unified UI library (shadcn/ui или Material-UI)
+
+### Phase 6.4: Production Hardening (1 неделя)
+- [ ] Langfuse eval для HITL flows (approval rate, completion time, cancel rate)
+- [ ] Rate limiting на формах (анти-спам: max 5 submissions per minute)
+- [ ] Mobile-responsive формы (тесты на iOS Safari, Android Chrome)
+- [ ] Accessibility (WCAG 2.1: keyboard navigation, screen readers, color contrast)
+- [ ] Error handling: network timeouts, API failures → graceful degradation
+- [ ] Security audit: CSRF protection, input sanitization, encrypted confirmations
+
+### Документация
+- [x] CopilotKit integration guide (docs/08-COPILOTKIT-GENERATIVE-UI.md)
+- [ ] AG-UI protocol implementation details
+- [ ] HITL flows diagrams (Mermaid)
+- [ ] Developer guide: how to add new HITL forms
+
+---
+
+## Phase 7: Architecture Refactoring
+
+**См. документацию:** [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md)
+
+### Context & Conversation
+- [ ] Context Builder (agents/context_builder.py):
+  - [ ] Customer profile injection (name, join_date, LTV)
+  - [ ] Active subscription injection (frequency, next_charge)
+  - [ ] Recent orders summary (last 3)
+  - [ ] Smart history truncation (старые сообщения → summarize)
+  - [ ] Outstanding context injection
+- [ ] Stable session IDs across channels (email-based key вместо random UUID)
+
+### Sentiment & Escalation
+- [ ] Sentiment tracking в Router Agent:
+  - [ ] Добавить sentiment field в RouterOutput (positive/neutral/negative/frustrated)
+  - [ ] Добавить escalation_signal field (customer wants human)
+  - [ ] Update router instructions с sentiment analysis rules
+- [ ] Enhanced escalation context:
+  - [ ] Structured handoff note в Chatwoot (conversation summary, AI actions, eval reasons)
+  - [ ] Smart assignee routing by category (billing → billing_agent, retention → retention_specialist)
+  - [ ] Labels: sentiment_{value}, category, escalation_reason
+
+### Knowledge & Retrieval
+- [ ] Pinecone reranking (knowledge/pinecone_client.py):
+  - [ ] search_with_reranking() function
+  - [ ] Initial search: top_k=20 (hybrid)
+  - [ ] Reranking: bge-reranker-v2-m3, top_n=5
+  - [ ] Metadata filtering (product, language, freshness)
+- [ ] Knowledge freshness priority (newer docs > старые в ранжировании)
+
+### Orchestrator Pattern
+- [ ] agents/orchestrator.py:
+  - [ ] SupportOrchestrator class (вместо монолита в api/routes.py)
+  - [ ] Методы: process(), _escalate_immediately(), _save_session()
+  - [ ] Parallel execution: agent + outstanding detection (asyncio.gather)
+  - [ ] Clean separation: router → context → agent → eval → assembly → persistence
+- [ ] Update api/routes.py: использовать orchestrator.process()
+- [ ] Unit tests для orchestrator (mock все компоненты)
+
+### Model Optimization
+- [ ] Cost optimization:
+  - [ ] Router: GPT-5.1 → GPT-5-mini (90% ⬇️ cost)
+  - [ ] Eval Gate: GPT-5.1 → Claude Sonnet 4.5 (better judgment)
+  - [ ] Support (retention): GPT-5.1 → Sonnet 4.5 + reasoning (50% ⬆️ quality)
+- [ ] Benchmarking: eval на golden dataset (338 items) для каждой модели
+
+---
+
+## Phase 8: Multi-Agent Teams
+
+**См. документацию:** [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md#phase-8-multi-agent-teams)
+
+### Team Architecture
+- [ ] agents/teams.py:
+  - [ ] Intake Agent (GPT-5-mini, triage + routing)
+  - [ ] Specialist Agents:
+    - [ ] Billing Specialist (payment, refund, subscription questions)
+    - [ ] Shipping Specialist (delivery, tracking, address)
+    - [ ] Retention Specialist (pause, cancel, downsell) — Sonnet 4.5 + reasoning
+    - [ ] Quality Specialist (damage, leaking, replacement)
+  - [ ] QA Agent (Claude Sonnet 4.5, заменяет Eval Gate)
+  - [ ] Agno Team orchestration
+- [ ] Team coordinator: routing decision logic
+- [ ] Inter-agent communication (shared context)
+- [ ] Retry logic: QA reject → specialist refines → QA re-check
+
+### Integration
+- [ ] Update orchestrator: support both single-agent and team modes
+- [ ] A/B testing: single-agent vs team (на 10% трафика)
+- [ ] Langfuse comparison: resolution rate, latency, quality scores
+
+---
+
+## Phase 9: AI Ops & Continuous Learning
+
+**См. документацию:** [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md#priority-3-ai-ops--learning-ongoing)
+
+### AI Ops Dashboard
+- [ ] services/analytics/ai_ops.py:
+  - [ ] get_failure_patterns() — топ причины draft/escalate
+  - [ ] get_knowledge_gaps() — вопросы с низкой accuracy
+  - [ ] get_tone_drift() — tracking тона по времени
+  - [ ] suggest_prompt_updates() — ML-based рекомендации
+- [ ] Метрики мониторинга:
+  - [ ] AI Resolution Rate (target >70%)
+  - [ ] Eval Gate Pass Rate (target >80%)
+  - [ ] Escalation Rate (target <10%)
+  - [ ] Average Confidence (target >0.8)
+  - [ ] Category Accuracy (per category, target >0.75)
+  - [ ] Response Time p95 (target <10s)
+- [ ] Alerts в Slack (#ai-ops channel)
+- [ ] Weekly AI Performance Report (automated)
 
 ### Feedback Loop
-- [ ] Production traces → Langfuse eval → prompt improvement cycle
-- [ ] Auto-detect quality regression → alert → rollback
+- [ ] learning/feedback.py:
+  - [ ] collect_human_edit() — когда human редактирует AI ответ
+  - [ ] classify_edit() — tone, accuracy, safety, completeness
+  - [ ] is_recurring_pattern() — детекция паттернов ошибок
+  - [ ] generate_prompt_update() — предложения по обновлению промптов
+- [ ] Chatwoot integration: hook на human edits → feedback collection
+- [ ] Prompt versioning (v1, v2, ...) в ai_answerer_instructions
+- [ ] A/B testing prompts (старая vs новая версия на 50/50 трафика)
+
+### Agno Learning Machine
+- [ ] Enable Learning Machine для tools:
+  - [ ] learning = LearningMachine(db=get_postgres_db(), scope="support_tools")
+  - [ ] agent = Agent(..., learning=learning, learn_from_errors=True)
+- [ ] learning_records таблица: population с real data
+- [ ] Learning dashboard: какие ошибки исправлялись, как часто
+
+### Continuous Evaluation
+- [ ] Auto-eval pipeline (daily):
+  - [ ] Run full eval на golden dataset (338 items)
+  - [ ] Compare с baseline scores
+  - [ ] Alert если regression >5%
+- [ ] Model comparison dashboard (Langfuse Experiments):
+  - [ ] GPT-5.1 vs Sonnet 4.5 на retention
+  - [ ] reasoning_effort: none vs low vs medium vs high
+  - [ ] Prompt variants: v1 vs v2 vs v3
+
+---
+
+## Phase 10: Scale + Production
+
+### Auto-Send Expansion
+- [ ] Auto-send на все safe категории (на основе eval confidence thresholds)
+- [ ] Per-category thresholds (retention → 0.9, gratitude → 0.7)
+- [ ] Gradual rollout: 10% → 25% → 50% → 100%
+
+### Production Monitoring
+- [ ] Langfuse production tracing (100% coverage)
+- [ ] Agno Control Plane integration (os.agno.com)
+- [ ] Real-time performance dashboard
+- [ ] Cost tracking (per category, per model, per day)
+
+### CRM Integration
+- [ ] Proactive support:
+  - [ ] Detect subscription issues BEFORE customer contacts (upcoming charge fails, delivery delay)
+  - [ ] Automated outreach (Chatwoot proactive message)
+  - [ ] Predictive churn prevention (ML model: predict cancel → offer downsell)
+
+### n8n Migration
+- [ ] Gradual migration from n8n email pipeline:
+  - [ ] Phase 10.1: 10% email → AI platform (A/B test)
+  - [ ] Phase 10.2: 50% email → AI platform
+  - [ ] Phase 10.3: 100% email → AI platform
+- [ ] Fallback: если AI fails → n8n backup pipeline
+
+### Feedback Loop v2
+- [ ] Production traces → Langfuse eval → автоматическое улучшение промптов (no human in loop)
+- [ ] Auto-detect quality regression:
+  - [ ] Monitor eval scores daily
+  - [ ] Alert если drop >5%
+  - [ ] Auto-rollback к предыдущей версии промптов

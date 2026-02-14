@@ -1,0 +1,24 @@
+# Analytics Service Dependencies
+
+# Agno SDK with OpenAI and PostgreSQL support
+agno[openai,postgres]>=2.4.8
+
+# FastAPI framework and ASGI server
+fastapi[standard]>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Configuration and logging
+pydantic-settings>=2.6.0
+structlog>=24.4.0
+
+# Data visualization
+plotly>=5.18.0
+
+# PostgreSQL direct connection (for psycopg3)
+psycopg>=3.1.0
+psycopg-binary>=3.1.0
+
+# Pinecone (for knowledge base - uses existing support-examples index)
+# Agno requires pinecone 5.4.2 specifically (not compatible with v6+)
+pinecone==5.4.2
+pinecone-text>=0.7.0  # Required for hybrid search (BM25Encoder)

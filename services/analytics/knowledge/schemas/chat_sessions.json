@@ -1,0 +1,82 @@
+{
+  "table": "chat_sessions",
+  "description": "Chat session metadata with AI eval decisions and performance metrics. Primary table for analytics - tracks every customer interaction through the platform.",
+  "columns": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "description": "Primary key, auto-generated UUID"
+    },
+    {
+      "name": "session_id",
+      "type": "text",
+      "description": "Unique session identifier. Format: 'cw_{conversation_id}' for Chatwoot, 'sess_{uuid}' for API. Used to track multi-turn conversations."
+    },
+    {
+      "name": "customer_email",
+      "type": "text",
+      "description": "Customer email address for customer identification and history tracking"
+    },
+    {
+      "name": "primary_category",
+      "type": "text",
+      "description": "AI-classified message category. Values: shipping_or_delivery_question, payment_question, frequency_change_request, skip_or_pause_request, recipient_or_address_change, customization_request, damaged_or_leaking_item_report, gratitude, retention_primary_request, retention_repeated_request"
+    },
+    {
+      "name": "secondary_category",
+      "type": "text",
+      "description": "Optional secondary category for multi-intent messages"
+    },
+    {
+      "name": "urgency",
+      "type": "text",
+      "description": "Message urgency level: low, medium, high"
+    },
+    {
+      "name": "eval_decision",
+      "type": "text",
+      "description": "Eval gate decision. Values: 'send' (auto-send to customer), 'draft' (requires review), 'escalate' (human intervention needed)"
+    },
+    {
+      "name": "eval_confidence",
+      "type": "text",
+      "description": "Eval confidence level: high, medium, low"
+    },
+    {
+      "name": "is_outstanding",
+      "type": "boolean",
+      "description": "Outstanding customer detection flag. True if customer has exceptional history or special status."
+    },
+    {
+      "name": "first_response_time_ms",
+      "type": "integer",
+      "description": "Time to first AI response in milliseconds. Performance metric."
+    },
+    {
+      "name": "total_messages",
+      "type": "integer",
+      "description": "Total messages in session (customer + agent). Multi-turn conversation indicator."
+    },
+    {
+      "name": "csat_score",
+      "type": "integer",
+      "description": "Customer satisfaction score (1-5). Optional, collected post-conversation."
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "description": "Session start timestamp with timezone"
+    }
+  ],
+  "indexes": [
+    "customer_email",
+    "primary_category",
+    "eval_decision",
+    "created_at"
+  ],
+  "sample_queries": [
+    "-- Resolution rate: % of sessions auto-sent\nSELECT COUNT(*) FILTER (WHERE eval_decision = 'send') * 100.0 / COUNT(*) as resolution_rate FROM chat_sessions WHERE created_at >= NOW() - INTERVAL '7 days';",
+    "-- Category breakdown\nSELECT primary_category, COUNT(*) as count FROM chat_sessions GROUP BY primary_category ORDER BY count DESC;",
+    "-- Daily trend\nSELECT DATE_TRUNC('day', created_at) as day, COUNT(*) as sessions FROM chat_sessions WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY day ORDER BY day;"
+  ]
+}
