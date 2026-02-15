@@ -180,6 +180,14 @@ def _sanitize_response(text: str, category: str) -> str:
         text_preview=text[:200] if len(text) > 200 else text,
     )
 
+    # Extra debug for damaged category
+    if category == "damaged_or_leaking_item_report":
+        logger.debug(
+            "damaged_full_text",
+            full_text=text,
+            contains_arrange=("arrange" in text.lower()),
+        )
+
     # Remove "Answer is not needed" (internal instruction that leaked)
     if "Answer is not needed" in text:
         text = text.replace("Answer is not needed.", "").replace("Answer is not needed", "")
@@ -188,15 +196,15 @@ def _sanitize_response(text: str, category: str) -> str:
 
     # Replace dangerous compensation promises (case-insensitive, multi-line)
     # IMPORTANT: Patterns must work with HTML tags in text (e.g., </div><div>)
-    # Use flexible apostrophe matching: [''] for Unicode variants
+    # Use flexible apostrophe matching: \u2019 (curly), \u0027 (straight), ' (backtick)
     dangerous_patterns = [
-        # Most specific patterns first - match exact phrases
-        (r"we[''']ll arrange for (?:a )?reshipment", "our team will review your case and reach out with a resolution"),
-        (r"we[''']ll arrange for (?:a )?replacement", "our team will investigate and get back to you"),
-        (r"we[''']ll send (?:a )?replacement", "our team will review this and contact you"),
+        # Most specific patterns first - match exact phrases (with Unicode apostrophe variants)
+        (r"we[\u2019\u0027']ll arrange for (?:a )?reshipment", "our team will review your case and reach out with a resolution"),
+        (r"we[\u2019\u0027']ll arrange for (?:a )?replacement", "our team will investigate and get back to you"),
+        (r"we[\u2019\u0027']ll send (?:a )?replacement", "our team will review this and contact you"),
         (r"replacements? will be sent", "our team will reach out with next steps"),
         # Catch any "we'll arrange" in damage context (after patterns above don't match)
-        (r"we[''']ll arrange", "our team will review and"),
+        (r"we[\u2019\u0027']ll arrange", "our team will review and"),
     ]
 
     for pattern, safe_replacement in dangerous_patterns:
