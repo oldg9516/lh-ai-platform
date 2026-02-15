@@ -26,7 +26,8 @@ import structlog
 try:
     from ag_ui.core import (
         RunAgentInput,
-        Message,
+        UserMessage,
+        AssistantMessage,
         TextMessageStartEvent,
         TextMessageContentEvent,
         TextMessageEndEvent,
@@ -110,8 +111,10 @@ async def copilot_stream(request: Request):
         except Exception:
             # Fallback to CopilotKit format
             copilot_request = CopilotRequest(**body)
+            # Convert to AG-UI message format (each message needs unique ID)
             messages = [
-                Message(role=m.role, content=m.content)
+                UserMessage(id=str(uuid4()), content=m.content) if m.role == "user"
+                else AssistantMessage(id=str(uuid4()), content=m.content)
                 for m in copilot_request.messages
             ]
             thread_id = copilot_request.threadId or str(uuid4())
@@ -166,9 +169,8 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
         # 1. Emit RUN_STARTED event
         yield encoder.encode(
             RunStartedEvent(
-                type=EventType.RUN_STARTED,
-                run_id=run_id,
-                thread_id=thread_id,
+                threadId=thread_id,
+                runId=run_id,
             )
         )
 
@@ -188,8 +190,7 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
         # 4. Emit TEXT_MESSAGE_START
         yield encoder.encode(
             TextMessageStartEvent(
-                type=EventType.TEXT_MESSAGE_START,
-                message_id=message_id,
+                messageId=message_id,
             )
         )
 
@@ -202,8 +203,7 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
             if hasattr(chunk, "content") and chunk.content:
                 yield encoder.encode(
                     TextMessageContentEvent(
-                        type=EventType.TEXT_MESSAGE_CONTENT,
-                        message_id=message_id,
+                        messageId=message_id,
                         delta=chunk.content,
                     )
                 )
@@ -217,9 +217,8 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
                     # TOOL_CALL_START
                     yield encoder.encode(
                         ToolCallStartEvent(
-                            type=EventType.TOOL_CALL_START,
-                            tool_call_id=tool_call_id,
-                            tool_call_name=tool_name,
+                            toolCallId=tool_call_id,
+                            toolCallName=tool_name,
                         )
                     )
 
@@ -228,8 +227,7 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
                         import json
                         yield encoder.encode(
                             ToolCallArgsEvent(
-                                type=EventType.TOOL_CALL_ARGS,
-                                tool_call_id=tool_call_id,
+                                toolCallId=tool_call_id,
                                 delta=json.dumps(tool.args),
                             )
                         )
@@ -237,24 +235,22 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
                     # TOOL_CALL_END
                     yield encoder.encode(
                         ToolCallEndEvent(
-                            type=EventType.TOOL_CALL_END,
-                            tool_call_id=tool_call_id,
+                            toolCallId=tool_call_id,
                         )
                     )
 
         # 6. Emit TEXT_MESSAGE_END
         yield encoder.encode(
             TextMessageEndEvent(
-                type=EventType.TEXT_MESSAGE_END,
-                message_id=message_id,
+                messageId=message_id,
             )
         )
 
         # 7. Emit RUN_FINISHED
         yield encoder.encode(
             RunFinishedEvent(
-                type=EventType.RUN_FINISHED,
-                run_id=run_id,
+                threadId=thread_id,
+                runId=run_id,
             )
         )
 
@@ -271,21 +267,19 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
         # Send error as text message
         yield encoder.encode(
             TextMessageContentEvent(
-                type=EventType.TEXT_MESSAGE_CONTENT,
-                message_id=message_id,
+                messageId=message_id,
                 delta=f"\n\n[Error: {str(e)}]",
             )
         )
         yield encoder.encode(
             TextMessageEndEvent(
-                type=EventType.TEXT_MESSAGE_END,
-                message_id=message_id,
+                messageId=message_id,
             )
         )
         yield encoder.encode(
             RunFinishedEvent(
-                type=EventType.RUN_FINISHED,
-                run_id=run_id,
+                threadId=thread_id,
+                runId=run_id,
             )
         )
 
@@ -297,22 +291,19 @@ async def _error_stream(error: str) -> AsyncGenerator[str, None]:
 
     yield encoder.encode(
         TextMessageStartEvent(
-            type=EventType.TEXT_MESSAGE_START,
-            message_id=message_id,
+            messageId=message_id,
         )
     )
 
     yield encoder.encode(
         TextMessageContentEvent(
-            type=EventType.TEXT_MESSAGE_CONTENT,
-            message_id=message_id,
+            messageId=message_id,
             delta=f"Error: {error}",
         )
     )
 
     yield encoder.encode(
         TextMessageEndEvent(
-            type=EventType.TEXT_MESSAGE_END,
-            message_id=message_id,
+            messageId=message_id,
         )
     )
