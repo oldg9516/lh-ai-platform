@@ -15,26 +15,17 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 
-/**
- * DamageClaimForm - HITL component for damage claim creation
- *
- * Uses CopilotKit's useHumanInTheLoop hook for human-in-the-loop approval flow:
- * 1. Agent calls create_damage_claim tool
- * 2. UI renders with damage details and confirmation buttons
- * 3. User approves or modifies claim details
- * 4. Response sent back to agent with user decision
- */
-
 export function DamageClaimForm() {
   const [item, setItem] = useState<string>("");
   const [description, setDescription] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
   useHumanInTheLoop({
     name: "create_damage_claim",
     description: "Create damage claim for damaged/leaking item. Requires human confirmation.",
     parameters: [
       {
-        name: "email",
+        name: "customer_email",
         type: "string",
         description: "Customer email address",
         required: true,
@@ -53,12 +44,10 @@ export function DamageClaimForm() {
       },
     ],
     render: ({ args, respond, status }) => {
-      // Guard: respond must be available for HITL
       if (!respond) return <></>;
 
-      const { email, item_description, damage_description } = args;
+      const { customer_email, item_description, damage_description } = args;
 
-      // Initialize with agent's values
       if (item_description && item === "") {
         setItem(item_description);
       }
@@ -66,12 +55,40 @@ export function DamageClaimForm() {
         setDescription(damage_description);
       }
 
+      const handleApprove = async () => {
+        setLoading(true);
+        try {
+          const res = await fetch("/api/copilot/execute-tool", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tool_name: "create_damage_claim",
+              tool_args: {
+                customer_email,
+                item_description: item,
+                damage_description: description,
+              },
+            }),
+          });
+          const data = await res.json();
+          if (data.status === "completed") {
+            respond(`APPROVED: Claim ${data.result.claim_id} created. ${data.result.message}`);
+          } else {
+            respond(`ERROR: ${data.result?.message || data.message}`);
+          }
+        } catch (err) {
+          respond(`ERROR: Failed to execute - ${err}`);
+        } finally {
+          setLoading(false);
+        }
+      };
+
       return (
         <Card className="w-full max-w-md mx-auto border-red-500">
           <CardHeader>
-            <CardTitle>📦 Create Damage Claim</CardTitle>
+            <CardTitle>Create Damage Claim</CardTitle>
             <CardDescription>
-              File damage report for <strong>{email}</strong>
+              File damage report for <strong>{customer_email}</strong>
             </CardDescription>
           </CardHeader>
 
@@ -83,7 +100,7 @@ export function DamageClaimForm() {
                 placeholder="e.g., olive oil bottle"
                 value={item}
                 onChange={(e) => setItem(e.target.value)}
-                disabled={status !== "executing"}
+                disabled={status !== "executing" || loading}
               />
             </div>
 
@@ -94,7 +111,7 @@ export function DamageClaimForm() {
                 placeholder="Describe the damage (e.g., bottle cracked, oil leaked)"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                disabled={status !== "executing"}
+                disabled={status !== "executing" || loading}
                 rows={4}
               />
             </div>
@@ -116,20 +133,18 @@ export function DamageClaimForm() {
             <Button
               variant="default"
               className="flex-1"
-              onClick={() =>
-                respond(`APPROVED: Item: ${item}, Damage: ${description}`)
-              }
-              disabled={status !== "executing" || !item || !description}
+              onClick={handleApprove}
+              disabled={status !== "executing" || !item || !description || loading}
             >
-              ✅ Create Claim
+              {loading ? "Processing..." : "Create Claim"}
             </Button>
             <Button
               variant="outline"
               className="flex-1"
               onClick={() => respond("CANCELLED: User declined claim creation")}
-              disabled={status !== "executing"}
+              disabled={status !== "executing" || loading}
             >
-              ❌ Cancel
+              Cancel
             </Button>
           </CardFooter>
         </Card>
@@ -137,7 +152,5 @@ export function DamageClaimForm() {
     },
   });
 
-  // This component doesn't render anything directly
-  // The render function above handles all UI
   return <></>;
 }

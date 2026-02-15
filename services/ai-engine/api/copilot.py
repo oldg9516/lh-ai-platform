@@ -45,6 +45,7 @@ except ImportError:
 
 from agents.support import create_support_agent
 from agents.router import classify_message
+from tools import TOOL_REGISTRY, WRITE_TOOLS
 
 logger = structlog.get_logger()
 
@@ -254,7 +255,8 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
         )
 
         # 4. Create support agent with customer email context
-        agent = create_support_agent(category, customer_email=customer_email)
+        # use_hitl=True: write tools come from frontend via useHumanInTheLoop
+        agent = create_support_agent(category, customer_email=customer_email, use_hitl=True)
 
         # 5. Prepend context to message
         agent_input = message
@@ -387,3 +389,65 @@ async def _error_stream(error: str) -> AsyncGenerator[str, None]:
             messageId=message_id,
         )
     )
+
+
+# --- HITL Tool Execution Endpoint ---
+
+
+class ExecuteToolRequest(BaseModel):
+    """Request to execute a HITL-approved tool."""
+    tool_name: str
+    tool_args: dict
+    session_id: str | None = None
+
+
+@router.post("/execute-tool")
+async def execute_tool(req: ExecuteToolRequest):
+    """Execute a HITL-approved tool after user confirmation.
+
+    Called by the frontend after the user approves a write operation
+    in the CopilotKit sidebar. Validates the tool name against the
+    whitelist and executes with the provided arguments.
+    """
+    # Validate tool name is a known write tool
+    if req.tool_name not in WRITE_TOOLS:
+        logger.warning("execute_tool_rejected", tool_name=req.tool_name, reason="not_a_write_tool")
+        return {"status": "error", "message": f"Tool '{req.tool_name}' is not an executable write tool"}
+
+    tool_fn = TOOL_REGISTRY.get(req.tool_name)
+    if not tool_fn:
+        logger.error("execute_tool_not_found", tool_name=req.tool_name)
+        return {"status": "error", "message": f"Tool '{req.tool_name}' not found in registry"}
+
+    try:
+        import json as json_lib
+        result_str = await tool_fn(**req.tool_args)
+        result = json_lib.loads(result_str)
+
+        # Audit log
+        try:
+            from database.queries import save_tool_execution
+            save_tool_execution({
+                "session_id": req.session_id or "copilot_hitl",
+                "tool_name": req.tool_name,
+                "tool_input": req.tool_args,
+                "tool_output": result,
+                "requires_approval": True,
+                "approval_status": "approved",
+                "status": "completed",
+            })
+        except Exception as audit_err:
+            logger.warning("audit_log_failed", error=str(audit_err))
+
+        logger.info(
+            "execute_tool_success",
+            tool_name=req.tool_name,
+            session_id=req.session_id,
+            result_status=result.get("status"),
+        )
+
+        return {"status": "completed", "result": result}
+
+    except Exception as e:
+        logger.error("execute_tool_error", tool_name=req.tool_name, error=str(e), exc_info=True)
+        return {"status": "error", "message": str(e)}

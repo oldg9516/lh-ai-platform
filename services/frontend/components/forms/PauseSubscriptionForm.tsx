@@ -14,48 +14,62 @@ import {
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 
-/**
- * PauseSubscriptionForm - HITL component for subscription pause
- *
- * Uses CopilotKit's useHumanInTheLoop hook for human-in-the-loop approval flow:
- * 1. Agent calls pause_subscription tool
- * 2. UI renders with month selector and confirmation buttons
- * 3. User approves or cancels
- * 4. Response sent back to agent with user decision
- */
-
 export function PauseSubscriptionForm() {
   const [selectedMonths, setSelectedMonths] = useState<number>(1);
+  const [loading, setLoading] = useState(false);
 
   useHumanInTheLoop({
     name: "pause_subscription",
     description: "Pause customer subscription for N months. Requires human confirmation.",
     parameters: [
       {
-        name: "email",
+        name: "customer_email",
         type: "string",
         description: "Customer email address",
         required: true,
       },
       {
-        name: "months",
+        name: "duration_months",
         type: "number",
         description: "Number of months to pause (1-12)",
         required: true,
       },
     ],
     render: ({ args, respond, status }) => {
-      // Guard: respond must be available for HITL
       if (!respond) return <></>;
 
-      const { email, months } = args;
+      const { customer_email, duration_months } = args;
+
+      const handleApprove = async () => {
+        setLoading(true);
+        try {
+          const res = await fetch("/api/copilot/execute-tool", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tool_name: "pause_subscription",
+              tool_args: { customer_email, duration_months: selectedMonths },
+            }),
+          });
+          const data = await res.json();
+          if (data.status === "completed") {
+            respond(`APPROVED: Subscription paused until ${data.result.paused_until}`);
+          } else {
+            respond(`ERROR: ${data.result?.message || data.message}`);
+          }
+        } catch (err) {
+          respond(`ERROR: Failed to execute - ${err}`);
+        } finally {
+          setLoading(false);
+        }
+      };
 
       return (
         <Card className="w-full max-w-md mx-auto border-orange-500">
           <CardHeader>
-            <CardTitle>⏸️ Pause Subscription</CardTitle>
+            <CardTitle>Pause Subscription</CardTitle>
             <CardDescription>
-              Confirm subscription pause for <strong>{email}</strong>
+              Confirm subscription pause for <strong>{customer_email}</strong>
             </CardDescription>
           </CardHeader>
 
@@ -72,7 +86,7 @@ export function PauseSubscriptionForm() {
                 value={[selectedMonths]}
                 onValueChange={(value) => setSelectedMonths(value[0])}
                 className="w-full"
-                disabled={status !== "executing"}
+                disabled={status !== "executing" || loading}
               />
               <p className="text-sm text-muted-foreground">
                 Subscription will resume automatically after {selectedMonths} month(s)
@@ -96,18 +110,18 @@ export function PauseSubscriptionForm() {
             <Button
               variant="default"
               className="flex-1"
-              onClick={() => respond(`APPROVED: Pause for ${selectedMonths} months`)}
-              disabled={status !== "executing"}
+              onClick={handleApprove}
+              disabled={status !== "executing" || loading}
             >
-              ✅ Confirm Pause
+              {loading ? "Processing..." : "Confirm Pause"}
             </Button>
             <Button
               variant="outline"
               className="flex-1"
               onClick={() => respond("CANCELLED: User declined pause")}
-              disabled={status !== "executing"}
+              disabled={status !== "executing" || loading}
             >
-              ❌ Cancel
+              Cancel
             </Button>
           </CardFooter>
         </Card>
@@ -115,7 +129,5 @@ export function PauseSubscriptionForm() {
     },
   });
 
-  // This component doesn't render anything directly
-  // The render function above handles all UI
   return <></>;
 }

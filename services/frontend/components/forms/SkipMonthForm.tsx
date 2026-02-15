@@ -20,13 +20,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export function ChangeFrequencyForm() {
-  const [selectedFrequency, setSelectedFrequency] = useState<string>("monthly");
+function getUpcomingMonths(): { value: string; label: string }[] {
+  const months = [];
+  const now = new Date();
+  for (let i = 1; i <= 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const value = d.toLocaleDateString("en-US", { year: "numeric", month: "long" });
+    months.push({ value, label: value });
+  }
+  return months;
+}
+
+export function SkipMonthForm() {
+  const [selectedMonth, setSelectedMonth] = useState<string>("next");
   const [loading, setLoading] = useState(false);
 
+  const upcomingMonths = getUpcomingMonths();
+
   useHumanInTheLoop({
-    name: "change_frequency",
-    description: "Change customer subscription frequency. Requires human confirmation.",
+    name: "skip_month",
+    description: "Skip one month of customer subscription. Requires human confirmation.",
     parameters: [
       {
         name: "customer_email",
@@ -35,19 +48,19 @@ export function ChangeFrequencyForm() {
         required: true,
       },
       {
-        name: "new_frequency",
+        name: "month",
         type: "string",
-        description: "New delivery frequency: monthly, bi-monthly, or quarterly",
-        required: true,
+        description: "Which month to skip (e.g., 'next' or specific month name)",
+        required: false,
       },
     ],
     render: ({ args, respond, status }) => {
       if (!respond) return <></>;
 
-      const { customer_email, new_frequency } = args;
+      const { customer_email, month } = args;
 
-      if (new_frequency && selectedFrequency !== new_frequency) {
-        setSelectedFrequency(new_frequency);
+      if (month && month !== "next" && selectedMonth === "next") {
+        setSelectedMonth(month);
       }
 
       const handleApprove = async () => {
@@ -57,13 +70,13 @@ export function ChangeFrequencyForm() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              tool_name: "change_frequency",
-              tool_args: { customer_email, new_frequency: selectedFrequency },
+              tool_name: "skip_month",
+              tool_args: { customer_email, month: selectedMonth },
             }),
           });
           const data = await res.json();
           if (data.status === "completed") {
-            respond(`APPROVED: Frequency changed to ${data.result.new_frequency}. Next charge: ${data.result.next_charge_date}`);
+            respond(`APPROVED: Skipped ${data.result.skipped_month}. Next charge: ${data.result.next_charge_date}`);
           } else {
             respond(`ERROR: ${data.result?.message || data.message}`);
           }
@@ -75,44 +88,47 @@ export function ChangeFrequencyForm() {
       };
 
       return (
-        <Card className="w-full max-w-md mx-auto border-blue-500">
+        <Card className="w-full max-w-md mx-auto border-amber-500">
           <CardHeader>
-            <CardTitle>Change Delivery Frequency</CardTitle>
+            <CardTitle>Skip Month</CardTitle>
             <CardDescription>
-              Update delivery frequency for <strong>{customer_email}</strong>
+              Skip a delivery month for <strong>{customer_email}</strong>
             </CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="frequency">
-                New Frequency: <strong>{selectedFrequency}</strong>
+              <Label htmlFor="skip-month">
+                Month to Skip: <strong>{selectedMonth === "next" ? "Next month" : selectedMonth}</strong>
               </Label>
               <Select
-                value={selectedFrequency}
-                onValueChange={setSelectedFrequency}
+                value={selectedMonth}
+                onValueChange={setSelectedMonth}
                 disabled={status !== "executing" || loading}
               >
-                <SelectTrigger id="frequency">
-                  <SelectValue placeholder="Select frequency" />
+                <SelectTrigger id="skip-month">
+                  <SelectValue placeholder="Select month to skip" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="monthly">Monthly (Every month)</SelectItem>
-                  <SelectItem value="bi-monthly">Bi-Monthly (Every 2 months)</SelectItem>
-                  <SelectItem value="quarterly">Quarterly (Every 3 months)</SelectItem>
+                  <SelectItem value="next">Next month</SelectItem>
+                  {upcomingMonths.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+            <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg">
               <p className="text-sm">
                 <strong>What happens:</strong>
               </p>
               <ul className="text-sm list-disc list-inside mt-2 space-y-1">
-                <li>Frequency changed to {selectedFrequency}</li>
-                <li>Next charge date will be updated</li>
-                <li>Confirmation email sent to customer</li>
-                <li>Can be changed again anytime</li>
+                <li>No delivery for the selected month</li>
+                <li>No charge for that month</li>
+                <li>Subscription continues next month</li>
+                <li>Can be reversed before the skip date</li>
               </ul>
             </div>
           </CardContent>
@@ -124,12 +140,12 @@ export function ChangeFrequencyForm() {
               onClick={handleApprove}
               disabled={status !== "executing" || loading}
             >
-              {loading ? "Processing..." : "Confirm Change"}
+              {loading ? "Processing..." : "Confirm Skip"}
             </Button>
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => respond("CANCELLED: User declined frequency change")}
+              onClick={() => respond("CANCELLED: User declined skip")}
               disabled={status !== "executing" || loading}
             >
               Cancel

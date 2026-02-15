@@ -14,27 +14,18 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 
-/**
- * ChangeAddressForm - HITL component for shipping address change
- *
- * Uses CopilotKit's useHumanInTheLoop hook for human-in-the-loop approval flow:
- * 1. Agent calls change_address tool
- * 2. UI renders with address fields and confirmation buttons
- * 3. User approves or modifies address
- * 4. Response sent back to agent with user decision
- */
-
 export function ChangeAddressForm() {
   const [street, setStreet] = useState<string>("");
   const [city, setCity] = useState<string>("");
   const [country, setCountry] = useState<string>("Israel");
+  const [loading, setLoading] = useState(false);
 
   useHumanInTheLoop({
     name: "change_address",
     description: "Change customer shipping address. Requires human confirmation.",
     parameters: [
       {
-        name: "email",
+        name: "customer_email",
         type: "string",
         description: "Customer email address",
         required: true,
@@ -47,14 +38,12 @@ export function ChangeAddressForm() {
       },
     ],
     render: ({ args, respond, status }) => {
-      // Guard: respond must be available for HITL
       if (!respond) return <></>;
 
-      const { email, new_address } = args;
+      const { customer_email, new_address } = args;
 
-      // Parse address if provided as string
       if (new_address && street === "") {
-        const parts = new_address.split(",").map((p) => p.trim());
+        const parts = new_address.split(",").map((p: string) => p.trim());
         setStreet(parts[0] || "");
         setCity(parts[1] || "");
         setCountry(parts[2] || "Israel");
@@ -62,12 +51,36 @@ export function ChangeAddressForm() {
 
       const fullAddress = `${street}, ${city}, ${country}`;
 
+      const handleApprove = async () => {
+        setLoading(true);
+        try {
+          const res = await fetch("/api/copilot/execute-tool", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tool_name: "change_address",
+              tool_args: { customer_email, new_address: fullAddress },
+            }),
+          });
+          const data = await res.json();
+          if (data.status === "completed") {
+            respond(`APPROVED: Address updated to ${data.result.new_address}`);
+          } else {
+            respond(`ERROR: ${data.result?.message || data.message}`);
+          }
+        } catch (err) {
+          respond(`ERROR: Failed to execute - ${err}`);
+        } finally {
+          setLoading(false);
+        }
+      };
+
       return (
         <Card className="w-full max-w-md mx-auto border-green-500">
           <CardHeader>
-            <CardTitle>📍 Change Shipping Address</CardTitle>
+            <CardTitle>Change Shipping Address</CardTitle>
             <CardDescription>
-              Update delivery address for <strong>{email}</strong>
+              Update delivery address for <strong>{customer_email}</strong>
             </CardDescription>
           </CardHeader>
 
@@ -79,7 +92,7 @@ export function ChangeAddressForm() {
                 placeholder="123 Main St, Apt 4B"
                 value={street}
                 onChange={(e) => setStreet(e.target.value)}
-                disabled={status !== "executing"}
+                disabled={status !== "executing" || loading}
               />
             </div>
 
@@ -90,7 +103,7 @@ export function ChangeAddressForm() {
                 placeholder="Tel Aviv"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                disabled={status !== "executing"}
+                disabled={status !== "executing" || loading}
               />
             </div>
 
@@ -101,7 +114,7 @@ export function ChangeAddressForm() {
                 placeholder="Israel"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
-                disabled={status !== "executing"}
+                disabled={status !== "executing" || loading}
               />
             </div>
 
@@ -122,18 +135,18 @@ export function ChangeAddressForm() {
             <Button
               variant="default"
               className="flex-1"
-              onClick={() => respond(`APPROVED: ${fullAddress}`)}
-              disabled={status !== "executing" || !street || !city}
+              onClick={handleApprove}
+              disabled={status !== "executing" || !street || !city || loading}
             >
-              ✅ Confirm Address
+              {loading ? "Processing..." : "Confirm Address"}
             </Button>
             <Button
               variant="outline"
               className="flex-1"
               onClick={() => respond("CANCELLED: User declined address change")}
-              disabled={status !== "executing"}
+              disabled={status !== "executing" || loading}
             >
-              ❌ Cancel
+              Cancel
             </Button>
           </CardFooter>
         </Card>
@@ -141,7 +154,5 @@ export function ChangeAddressForm() {
     },
   });
 
-  // This component doesn't render anything directly
-  // The render function above handles all UI
   return <></>;
 }

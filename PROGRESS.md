@@ -333,21 +333,33 @@
   - [x] 12 integration tests для tools с mocks (async conversion)
   - [x] Всего: 227 tests passing (225 после LLM недетерминистичности)
 
-### Phase 6.2: Full HITL Implementation (3 недели)
-- [x] HITL формы для write-операций:
+### Phase 6.2: Full HITL Implementation ✅ COMPLETE
+- [x] HITL формы для write-операций (5/5):
   - [x] PauseSubscriptionForm (pause_subscription) — Day 2
   - [x] ChangeFrequencyForm (change_frequency) — Day 3
   - [x] ChangeAddressForm (change_address) — Day 3
   - [x] DamageClaimForm (create_damage_claim) — Day 3
-  - [ ] SkipMonthForm (skip_month)
-- [ ] File upload для damage claims (S3/MinIO integration)
+  - [x] SkipMonthForm (skip_month) — Phase 6.2 completion
+- [x] Backend HITL Architecture:
+  - [x] WRITE_TOOLS set + resolve_tools_for_copilot() — filters write tools for CopilotKit path
+  - [x] create_support_agent(use_hitl=True) — backend agent gets only read-only tools
+  - [x] Frontend tools via useHumanInTheLoop auto-forwarded to agent via AG-UI protocol
+  - [x] POST /api/copilot/execute-tool — executes HITL-approved tools after user confirmation
+  - [x] Pydantic validation + tool_name whitelist (only WRITE_TOOLS allowed)
+- [x] Frontend HITL Integration:
+  - [x] Parameter alignment: email → customer_email, months → duration_months (matching backend signatures)
+  - [x] All 5 forms call /api/copilot/execute-tool on Approve → get real API result → respond() to agent
+  - [x] Loading states on all forms (disabled inputs + "Processing..." button text)
+  - [x] Next.js proxy route: /api/copilot/execute-tool → FastAPI backend
+  - [x] CopilotSidebar integrated in providers.tsx (branding: "Lev Haolam Support")
+  - [x] Updated page.tsx: registered SkipMonthForm, removed placeholder, updated status
+- [x] Audit logging: save_tool_execution() called with requires_approval=true, approval_status=approved
 - [x] Mock APIs для демо (Phase 6.1.5)
+- [ ] File upload для damage claims (S3/MinIO integration)
 - [ ] Интеграция с реальными API (IT dept):
   - [ ] Zoho CRM (pause, skip, frequency change)
   - [ ] Pay API (payment method updates)
   - [ ] Shipping provider API (address validation)
-- [ ] Audit logging: tool_executions с confirmation_timestamp, user_approved
-- [ ] Tool confirmations: update tools/subscription.py, tools/damage.py с @tool(requires_confirmation=True)
 
 ### Phase 6.3: Informational Widgets (2 недели)
 - [ ] Read-only компоненты (no confirmation needed):

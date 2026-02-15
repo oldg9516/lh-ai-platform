@@ -14,7 +14,7 @@ from agno.models.anthropic import Claude
 from agents.config import CATEGORY_CONFIG, CategoryConfig
 from agents.instructions import load_instructions
 from knowledge.pinecone_client import create_knowledge
-from tools import resolve_tools
+from tools import resolve_tools, resolve_tools_for_copilot
 
 logger = structlog.get_logger()
 
@@ -39,7 +39,11 @@ def _resolve_model(config: CategoryConfig):
         raise ValueError(f"Unknown model_provider: {config.model_provider}")
 
 
-def create_support_agent(category: str, customer_email: str | None = None) -> Agent:
+def create_support_agent(
+    category: str,
+    customer_email: str | None = None,
+    use_hitl: bool = False,
+) -> Agent:
     """Create a dynamically-configured Support Agent for a category.
 
     The agent gets model, instructions, knowledge, and tools
@@ -48,6 +52,8 @@ def create_support_agent(category: str, customer_email: str | None = None) -> Ag
     Args:
         category: One of the 10 valid category strings.
         customer_email: Customer email for tool lookups and personalization.
+        use_hitl: If True, exclude write tools (they come from frontend
+            via CopilotKit useHumanInTheLoop).
 
     Returns:
         Configured Agno Agent ready to process messages.
@@ -97,8 +103,10 @@ def create_support_agent(category: str, customer_email: str | None = None) -> Ag
         agent_kwargs["search_knowledge"] = True
 
     # Resolve action tools from CATEGORY_CONFIG
+    # For CopilotKit HITL: exclude write tools (they come from frontend)
     if config.tools:
-        resolved = resolve_tools(config.tools)
+        resolver = resolve_tools_for_copilot if use_hitl else resolve_tools
+        resolved = resolver(config.tools)
         if resolved:
             agent_kwargs["tools"] = resolved
 

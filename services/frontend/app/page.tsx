@@ -4,6 +4,7 @@ import { PauseSubscriptionForm } from "@/components/forms/PauseSubscriptionForm"
 import { ChangeFrequencyForm } from "@/components/forms/ChangeFrequencyForm";
 import { ChangeAddressForm } from "@/components/forms/ChangeAddressForm";
 import { DamageClaimForm } from "@/components/forms/DamageClaimForm";
+import { SkipMonthForm } from "@/components/forms/SkipMonthForm";
 
 export default function HomePage() {
   return (
@@ -15,60 +16,40 @@ export default function HomePage() {
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             AI-powered customer support with Human-in-the-Loop confirmations.
-            Phase 6.1: CopilotKit Prototype
+            Open the chat sidebar to get started.
           </p>
         </div>
 
         <div className="max-w-4xl mx-auto space-y-8">
           <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-6">
-            <h2 className="text-2xl font-semibold mb-4">🎯 Phase 6.1 Status</h2>
+            <h2 className="text-2xl font-semibold mb-4">Platform Features</h2>
             <div className="grid gap-4">
               <div className="flex items-start gap-3">
-                <span className="text-green-500 font-bold">✅</span>
+                <span className="text-green-500 font-bold">*</span>
                 <div>
-                  <p className="font-medium">Next.js 16 + pnpm + shadcn/ui</p>
+                  <p className="font-medium">5 HITL Confirmation Forms</p>
                   <p className="text-sm text-muted-foreground">
-                    Modern stack with Tailwind CSS 4
+                    Pause, Frequency, Address, Damage Claim, Skip Month
                   </p>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
-                <span className="text-green-500 font-bold">✅</span>
+                <span className="text-green-500 font-bold">*</span>
                 <div>
-                  <p className="font-medium">CopilotKit + React Query installed</p>
+                  <p className="font-medium">AI Agent with 12 Action Tools</p>
                   <p className="text-sm text-muted-foreground">
-                    AG-UI protocol ready for streaming
+                    Read-only lookups + write operations with approval
                   </p>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
-                <span className="text-green-500 font-bold">✅</span>
+                <span className="text-green-500 font-bold">*</span>
                 <div>
-                  <p className="font-medium">4 HITL Forms created (Day 3 complete!)</p>
+                  <p className="font-medium">AG-UI Protocol Streaming</p>
                   <p className="text-sm text-muted-foreground">
-                    PauseSubscription, ChangeFrequency, ChangeAddress, DamageClaim
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <span className="text-orange-500 font-bold">🔄</span>
-                <div>
-                  <p className="font-medium">AG-UI streaming endpoint (stub)</p>
-                  <p className="text-sm text-muted-foreground">
-                    /api/copilot created, needs FastAPI integration
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <span className="text-gray-400 font-bold">⏳</span>
-                <div>
-                  <p className="font-medium">Docker + E2E testing</p>
-                  <p className="text-sm text-muted-foreground">
-                    Next: Add to docker-compose.yml
+                    Real-time responses via CopilotKit sidebar
                   </p>
                 </div>
               </div>
@@ -76,14 +57,14 @@ export default function HomePage() {
           </div>
 
           <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-2">💡 What's Next</h3>
-            <ol className="list-decimal list-inside space-y-2 text-sm">
-              <li>Connect AG-UI endpoint to FastAPI backend</li>
-              <li>Implement real agent streaming with tool calls</li>
-              <li>Add Dockerfile and docker-compose service</li>
-              <li>Create E2E test: Chatwoot → pause → confirm → Zoho</li>
-              <li>Add remaining HITL forms (address, damage claim, etc.)</li>
-            </ol>
+            <h3 className="text-lg font-semibold mb-2">Try It Out</h3>
+            <p className="text-sm mb-3">Click the chat button in the bottom-right corner and try:</p>
+            <ul className="list-disc list-inside space-y-2 text-sm">
+              <li>&quot;I want to pause my subscription. My email is audreygs1955@me.com&quot;</li>
+              <li>&quot;Can I skip next month? Email: mmefred1@gmail.com&quot;</li>
+              <li>&quot;I need to change my delivery frequency to quarterly&quot;</li>
+              <li>&quot;My olive oil bottle arrived cracked and leaking&quot;</li>
+            </ul>
           </div>
         </div>
 
@@ -92,13 +73,7 @@ export default function HomePage() {
         <ChangeFrequencyForm />
         <ChangeAddressForm />
         <DamageClaimForm />
-
-        {/* CopilotSidebar will appear here when CopilotKit is active */}
-        <div className="fixed bottom-4 right-4">
-          <p className="text-xs text-muted-foreground bg-white dark:bg-slate-800 px-3 py-1 rounded-full shadow">
-            💬 CopilotKit sidebar will appear here
-          </p>
-        </div>
+        <SkipMonthForm />
       </div>
     </main>
   );
