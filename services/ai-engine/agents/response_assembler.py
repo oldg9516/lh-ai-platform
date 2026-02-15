@@ -119,6 +119,9 @@ def assemble_response(
     # Body — strip existing greeting if AI already added one
     body = _strip_existing_greeting(raw_response, customer_name)
 
+    # Sanitize — remove unsafe phrases
+    body = _sanitize_response(body, category)
+
     # Closer
     closer = CLOSERS[idx % len(CLOSERS)]
 
@@ -149,6 +152,102 @@ def _strip_existing_greeting(text: str, customer_name: str) -> str:
     text = re.sub(pattern_generic, "", text, flags=re.IGNORECASE).strip()
 
     return text
+
+
+def _sanitize_response(text: str, category: str) -> str:
+    """Remove unsafe or internal phrases from AI response.
+
+    Filters out:
+    - Internal system messages ("Answer is not needed")
+    - Direct compensation promises ("we'll arrange for reshipment")
+    - Raw database field names
+
+    Args:
+        text: Raw response body.
+        category: Primary category.
+
+    Returns:
+        Sanitized response text.
+    """
+    original = text
+    sanitized = False
+
+    # Debug logging
+    logger.debug(
+        "sanitize_response_called",
+        category=category,
+        text_length=len(text),
+        text_preview=text[:200] if len(text) > 200 else text,
+    )
+
+    # Remove "Answer is not needed" (internal instruction that leaked)
+    if "Answer is not needed" in text:
+        text = text.replace("Answer is not needed.", "").replace("Answer is not needed", "")
+        sanitized = True
+        logger.warning("sanitized_internal_message", category=category, phrase="Answer is not needed")
+
+    # Replace dangerous compensation promises (case-insensitive, multi-line)
+    # IMPORTANT: Patterns must work with HTML tags in text (e.g., </div><div>)
+    # Use flexible apostrophe matching: [''] for Unicode variants
+    dangerous_patterns = [
+        # Most specific patterns first - match exact phrases
+        (r"we[''']ll arrange for (?:a )?reshipment", "our team will review your case and reach out with a resolution"),
+        (r"we[''']ll arrange for (?:a )?replacement", "our team will investigate and get back to you"),
+        (r"we[''']ll send (?:a )?replacement", "our team will review this and contact you"),
+        (r"replacements? will be sent", "our team will reach out with next steps"),
+        # Catch any "we'll arrange" in damage context (after patterns above don't match)
+        (r"we[''']ll arrange", "our team will review and"),
+    ]
+
+    for pattern, safe_replacement in dangerous_patterns:
+        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+        if match:
+            logger.debug(
+                "pattern_matched",
+                category=category,
+                pattern=pattern[:50],
+                matched_text=match.group(0)[:100],
+            )
+            text = re.sub(pattern, safe_replacement, text, flags=re.IGNORECASE | re.DOTALL)
+            sanitized = True
+            logger.warning(
+                "sanitized_dangerous_promise",
+                category=category,
+                pattern=pattern[:50],
+                replacement=safe_replacement[:50],
+            )
+
+    # Remove "I don't have [technical_field_name]" internal messages (only explicit database field names)
+    internal_field_patterns = [
+        # Match explicit database field names with dots or underscores
+        (r"I don't have\s+(?:payer\.email|next_planned_unpaid_box\.payment_date_planned|subscription_status)\s+for the customer\.?",
+         "I apologize, but I'm unable to locate that information at the moment. Could you please provide your email address or order number?"),
+        # Match raw field references in sentences
+        (r"I don't have\s+[\w._]+\.[\w._]+\s+for",
+         "I apologize, but I'm unable to locate that information at the moment. Could you please provide your email address or order number?"),
+    ]
+
+    for pattern, fallback in internal_field_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            text = re.sub(pattern, fallback, text, flags=re.IGNORECASE)
+            sanitized = True
+            logger.warning(
+                "sanitized_internal_field_message",
+                category=category,
+                matched_text=match.group(0),
+            )
+
+    # Log if sanitization occurred
+    if sanitized:
+        logger.info(
+            "response_sanitized",
+            category=category,
+            original_length=len(original),
+            sanitized_length=len(text),
+        )
+
+    return text.strip()
 
 
 def _is_system_response(text: str) -> bool:

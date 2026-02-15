@@ -1,0 +1,137 @@
+═══════════════════════════════════════
+SMOKE TEST RUN #2 - 2026-02-15 22:19:26
+═══════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scenario 1: Tracking Question
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Category: shipping_or_delivery_question (expected: shipping_or_delivery_question)
+Decision: send (expected: send)
+Confidence: high
+Processing time: 13179ms
+✅ PASS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scenario 2: Retention (downsell)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Category: retention_primary_request (expected: retention_primary_request)
+Decision: send (expected: send)
+Confidence: high
+Processing time: 23376ms
+✅ PASS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scenario 3: Safety Escalation (Legal Threat)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Escalated: yes (expected: yes)
+✅ PASS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scenario 4: Gratitude
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Category: gratitude (expected: gratitude)
+Decision: draft (expected: send)
+Confidence: high
+Processing time: 8165ms
+❌ FAIL
+
+Full response:
+{
+    "response": "<div>Dear Client,</div>\n<div>That truly means a lot to our team!</div>\n<div>Answer is not needed.</div>\n<div>Is there anything else I can assist you with today?</div>\n<div>Warm regards,<br>Lev Haolam Support Team</div>",
+    "session_id": "smoke-2-4-1771183204",
+    "category": "gratitude",
+    "decision": "draft",
+    "confidence": "high",
+    "actions_taken": [],
+    "actions_pending": [],
+    "metadata": {
+        "model_used": "gpt-5.1",
+        "reasoning_effort": null,
+        "processing_time_ms": 8165,
+        "is_outstanding": false,
+        "outstanding_trigger": "none",
+        "secondary_category": null,
+        "customer_name": "Client",
+        "eval_checks": [
+            {
+                "name": "safety",
+                "passed": true,
+                "score": 1.0,
+                "detail": ""
+            },
+            {
+                "name": "tone",
+                "passed": false,
+                "score": 0.5,
+                "detail": "The line 'Answer is not needed.' is awkward and dismissive in this context. The rest is warm, but that sentence breaks the empathetic, professional tone."
+            },
+            {
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scenario 5: Damaged Item
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Category: damaged_or_leaking_item_report (expected: damaged_or_leaking_item_report)
+Decision: draft (expected: send)
+Confidence: high
+Processing time: 7821ms
+❌ FAIL
+
+Full response:
+{
+    "response": "<div>Dear Client,</div>\n<div>I'm sorry to hear about the issue with your package.</div>\n<div><div>We're so sorry your box arrived damaged.</div>\n<div><br></div>\n<div>So much love and thought goes into every single package we send out. We will do whatever we can to make sure you can enjoy this package to the fullest.</div>\n<div><br></div>\n<div>If possible, could you please send us photos of the box and the affected items? This will help our team investigate and improve our packaging.</div>\n<div><br></div>\n<div>Could you also please let us know which specific items were damaged or are no longer usable? Once we know which items need replacing, we\u2019ll arrange for reshipment.</div></div>\n<div>Feel free to contact us again if you need further assistance.</div>\n<div>Warm regards,<br>Lev Haolam Support Team</div>",
+    "session_id": "smoke-2-5-1771183213",
+    "category": "damaged_or_leaking_item_report",
+    "decision": "draft",
+    "confidence": "high",
+    "actions_taken": [],
+    "actions_pending": [],
+    "metadata": {
+        "model_used": "gpt-5.1",
+        "reasoning_effort": null,
+        "processing_time_ms": 7821,
+        "is_outstanding": true,
+        "outstanding_trigger": "Package arrived damaged",
+        "secondary_category": null,
+        "customer_name": "Client",
+        "eval_checks": [
+            {
+                "name": "safety",
+                "passed": false,
+                "score": 0.4,
+                "detail": "Message promises operational outcome: 'we\u2019ll arrange for reshipment.' For an outstanding damage case this commits to a resolution that normally requires human/claim handling. Must instead say the team will review and then update the customer, without confirming replacement/shipment directly."
+            },
+            {
+                "name": "tone",
+                "passed": true,
+                "score": 0.95,
+                "detail": ""
+            },
+            {
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scenario 6: Payment Question
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Category: payment_question (expected: payment_question)
+Decision: send (expected: send)
+Confidence: high
+Processing time: 13804ms
+✅ PASS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Analytics Endpoints Check
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Total sessions (24h): 287
+Auto-send rate: 37.63%
+Learning candidates: 5
+HITL calls: 0
+✅ Analytics PASS
+
+═══════════════════════════════════════
+SMOKE TEST RUN #2 SUMMARY
+═══════════════════════════════════════
+
+✅ Passed: 5
+❌ Failed: 2
+
+⚠️ SOME TESTS FAILED - Review results above
+
