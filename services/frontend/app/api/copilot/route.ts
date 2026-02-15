@@ -3,7 +3,7 @@ import {
   ExperimentalEmptyAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
 } from "@copilotkit/runtime";
-import { HttpAgent } from "@copilotkit/runtime";
+import { HttpAgent } from "@ag-ui/client";
 import { NextRequest } from "next/server";
 
 /**
