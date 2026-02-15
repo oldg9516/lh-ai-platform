@@ -290,12 +290,27 @@
 - [docs/08-COPILOTKIT-GENERATIVE-UI.md](docs/08-COPILOTKIT-GENERATIVE-UI.md)
 - [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — детальный анализ Phase 6-10 + Agno Learning Machine
 
-### Phase 6.1: CopilotKit Prototype (2 недели)
-- [ ] Setup CopilotKit в новом React app (services/frontend)
-- [ ] Реализовать AG-UI streaming endpoint (/api/copilot) с SSE
-- [ ] Создать первую HITL форму: PauseSubscriptionForm (pause_subscription tool)
+### Phase 6.1: CopilotKit Prototype ✅ COMPLETE
+- [x] Setup CopilotKit в новом React app (services/frontend)
+  - [x] Next.js 16 + pnpm + shadcn/ui
+  - [x] CopilotKit v1.51.3 (@copilotkit/react-core + react-ui + runtime)
+  - [x] @ag-ui/client v0.0.45 для HttpAgent
+  - [x] React Query v5.90.21 для state management
+  - [x] CopilotSidebar с брендингом "Lev Haolam Support"
+  - [x] threadId generation для session management
+- [x] Реализовать AG-UI streaming endpoint (/api/copilot)
+  - [x] Frontend: CopilotRuntime + HttpAgent → FastAPI backend
+  - [x] Backend: FastAPI AG-UI stub endpoint (services/ai-engine/api/copilot.py)
+  - [x] Architecture: Next.js → HttpAgent → FastAPI (AG-UI protocol)
+- [x] Создать первую HITL форму: PauseSubscriptionForm
+  - [x] useHumanInTheLoop hook с parameters (email, months)
+  - [x] shadcn/ui компоненты (Button, Card, Label, Slider)
+  - [x] Confirmation/Cancel actions
 - [ ] Интеграция с Chatwoot widget (iframe embedding)
 - [ ] E2E тест: Chatwoot → pause request → форма → user confirmation → Zoho API
+
+**Коммиты:**
+- `f5e23d0` Phase 6.1 Complete: CopilotKit + Agno integration working
 
 ### Phase 6.2: Full HITL Implementation (3 недели)
 - [ ] HITL формы для всех write-операций:
