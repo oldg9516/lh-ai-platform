@@ -64,6 +64,26 @@ async def copilot_health():
     }
 
 
+@router.get("/info")
+async def runtime_info():
+    """Runtime info endpoint for CopilotKit discovery.
+
+    Returns runtime information and available agents.
+    Required by CopilotKit for agent discovery and capabilities.
+    """
+    return {
+        "version": "0.1.0",
+        "runtime": "ag-ui-fastapi",
+        "capabilities": ["streaming", "tools", "hitl"],
+        "agents__unsafe_dev_only": [
+            {
+                "name": "default",
+                "description": "Lev Haolam Support Agent - handles all customer support categories",
+            }
+        ],
+    }
+
+
 # --- Request Models (Fallback if ag_ui.core not available) ---
 
 
@@ -102,6 +122,32 @@ async def copilot_stream(request: Request):
     try:
         # Parse request body
         body = await request.json()
+
+        # Handle CopilotKit protocol methods (info, agent/connect, etc.)
+        if "method" in body:
+            method = body.get("method")
+            logger.info("copilot_protocol_method", method=method, body=body)
+
+            if method == "info":
+                return {
+                    "version": "0.1.0",
+                    "runtime": "ag-ui-fastapi",
+                    "capabilities": ["streaming", "tools", "hitl"],
+                }
+
+            if method == "agent/connect":
+                agent_name = body.get("agentName", "support_agent")
+                return {
+                    "connected": True,
+                    "agent": {
+                        "id": agent_name,
+                        "name": "Lev Haolam Support Agent",
+                        "description": "AI agent for customer support",
+                    },
+                }
+
+            # Unknown method
+            return {"error": f"Unknown method: {method}"}
 
         # Try parsing as RunAgentInput first (AG-UI native format)
         try:

@@ -4,16 +4,8 @@ const nextConfig: NextConfig = {
   // Enable standalone output for Docker deployment
   output: "standalone",
 
-  // Proxy AG-UI API requests to ai-engine backend
-  async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://ai-engine:8000";
-    return [
-      {
-        source: "/api/copilot/:path*",
-        destination: `${backendUrl}/api/copilot/:path*`,
-      },
-    ];
-  },
+  // Note: Rewrites removed - using API route handler instead
+  // See app/api/copilot/[[...path]]/route.ts for proxy implementation
 };
 
 export default nextConfig;
