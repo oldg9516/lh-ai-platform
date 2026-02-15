@@ -39,7 +39,7 @@ def _resolve_model(config: CategoryConfig):
         raise ValueError(f"Unknown model_provider: {config.model_provider}")
 
 
-def create_support_agent(category: str) -> Agent:
+def create_support_agent(category: str, customer_email: str | None = None) -> Agent:
     """Create a dynamically-configured Support Agent for a category.
 
     The agent gets model, instructions, knowledge, and tools
@@ -47,6 +47,7 @@ def create_support_agent(category: str) -> Agent:
 
     Args:
         category: One of the 10 valid category strings.
+        customer_email: Customer email for tool lookups and personalization.
 
     Returns:
         Configured Agno Agent ready to process messages.
@@ -61,6 +62,14 @@ def create_support_agent(category: str) -> Agent:
 
     # Load instructions from database
     instructions = load_instructions(category)
+
+    # Add customer email context if provided
+    if customer_email:
+        email_context = (
+            f"\n\nIMPORTANT: Customer email for this conversation: {customer_email}\n"
+            f"When calling tools that require customer_email parameter, use this email address."
+        )
+        instructions.append(email_context)
 
     # Create knowledge base for this category's namespace
     knowledge = None

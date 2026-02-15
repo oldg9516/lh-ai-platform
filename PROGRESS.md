@@ -380,7 +380,14 @@
 - [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md)
 - [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — детальный анализ Phase 6-10 + Agno Learning Machine
 
-### Context & Conversation
+### Context & Conversation (Day 4-5 ✅ PARTIAL)
+- [x] **Customer Email Context (Day 4-5)**
+  - [x] Router agent extracts email from message (`RouterOutput.email`)
+  - [x] `create_support_agent(category, customer_email)` accepts email parameter
+  - [x] Email injected into agent instructions as context
+  - [x] Tools can use customer email for database lookups
+  - [x] AG-UI endpoint passes email to support agent
+  - [x] Tests: 6 tests passing (email extraction, context injection, tool integration)
 - [ ] Context Builder (agents/context_builder.py):
   - [ ] Customer profile injection (name, join_date, LTV)
   - [ ] Active subscription injection (frequency, next_charge)
