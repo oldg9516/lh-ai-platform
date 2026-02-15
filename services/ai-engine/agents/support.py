@@ -52,8 +52,9 @@ def create_support_agent(
     Args:
         category: One of the 10 valid category strings.
         customer_email: Customer email for tool lookups and personalization.
-        use_hitl: If True, exclude write tools (they come from frontend
-            via CopilotKit useHumanInTheLoop).
+        use_hitl: If True, replace write tools with HITL proxy versions
+            that return "pending_confirmation". AG-UI ToolCall events trigger
+            CopilotKit forms for user confirmation.
 
     Returns:
         Configured Agno Agent ready to process messages.
@@ -76,6 +77,22 @@ def create_support_agent(
             f"When calling tools that require customer_email parameter, use this email address."
         )
         instructions.append(email_context)
+
+    # Add HITL instructions for CopilotKit path
+    if use_hitl:
+        hitl_context = (
+            "\n\nHUMAN-IN-THE-LOOP TOOLS:\n"
+            "You have tools that require customer confirmation before execution. "
+            "When the customer wants to pause, skip, change frequency, change address, "
+            "or report damage — you MUST call the appropriate tool. "
+            "Do NOT tell the customer to visit a website or portal. "
+            "Do NOT give step-by-step manual instructions. "
+            "Instead, ALWAYS call the tool directly. A confirmation form will appear "
+            "for the customer to review and approve the action.\n"
+            "After calling the tool, tell the customer that a confirmation form "
+            "has appeared and they should review and confirm it."
+        )
+        instructions.append(hitl_context)
 
     # Create knowledge base for this category's namespace
     knowledge = None

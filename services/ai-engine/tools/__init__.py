@@ -10,6 +10,7 @@ import structlog
 from tools.customer import get_customer_history, get_payment_history, get_subscription
 from tools.customization import get_box_contents
 from tools.damage import create_damage_claim, request_photos
+from tools import hitl_proxies
 from tools.retention import generate_cancel_link
 from tools.shipping import track_package
 from tools.subscription import change_address, change_frequency, pause_subscription, skip_month
@@ -32,8 +33,8 @@ TOOL_REGISTRY: dict[str, callable] = {
 }
 
 # Write tools that modify data. For CopilotKit HITL flow,
-# these are provided by the frontend via useHumanInTheLoop
-# and should NOT be included in the backend agent's toolset.
+# these are replaced with proxy versions that return "pending_confirmation".
+# The real execution happens via /api/copilot/execute-tool after user approval.
 WRITE_TOOLS: set[str] = {
     "change_frequency",
     "skip_month",
@@ -41,6 +42,18 @@ WRITE_TOOLS: set[str] = {
     "change_address",
     "create_damage_claim",
     "request_photos",
+}
+
+# HITL proxy versions of write tools. Same signatures but return
+# "pending_confirmation" instead of executing. Used in CopilotKit path
+# so the LLM knows about the tools and can call them, triggering
+# AG-UI ToolCall events → CopilotKit renders HITL forms.
+HITL_PROXY_REGISTRY: dict[str, callable] = {
+    "pause_subscription": hitl_proxies.pause_subscription,
+    "skip_month": hitl_proxies.skip_month,
+    "change_frequency": hitl_proxies.change_frequency,
+    "change_address": hitl_proxies.change_address,
+    "create_damage_claim": hitl_proxies.create_damage_claim,
 }
 
 
@@ -64,22 +77,35 @@ def resolve_tools(tool_names: list[str]) -> list[callable]:
 
 
 def resolve_tools_for_copilot(tool_names: list[str]) -> list[callable]:
-    """Resolve tools excluding write operations for CopilotKit HITL flow.
+    """Resolve tools for CopilotKit HITL flow.
 
-    In the CopilotKit path, write tools come from the frontend via
-    useHumanInTheLoop. The backend agent should only have read-only tools.
+    Write tools are replaced with HITL proxy versions that return
+    "pending_confirmation". This way the LLM knows about the tools
+    and calls them, which emits AG-UI ToolCall events. CopilotKit
+    intercepts these and renders confirmation forms.
 
     Args:
         tool_names: List of tool name strings from CATEGORY_CONFIG.
 
     Returns:
-        List of read-only callable tool functions.
+        List of callable tool functions (read-only + HITL proxies).
     """
-    read_only_names = [name for name in tool_names if name not in WRITE_TOOLS]
+    tools = []
+    proxied = []
+    for name in tool_names:
+        if name in HITL_PROXY_REGISTRY:
+            tools.append(HITL_PROXY_REGISTRY[name])
+            proxied.append(name)
+        else:
+            fn = TOOL_REGISTRY.get(name)
+            if fn is None:
+                logger.warning("unknown_tool_name", tool_name=name)
+                continue
+            tools.append(fn)
     logger.info(
         "resolve_tools_copilot",
         total=len(tool_names),
-        read_only=len(read_only_names),
-        filtered_out=[name for name in tool_names if name in WRITE_TOOLS],
+        resolved=len(tools),
+        hitl_proxied=proxied,
     )
-    return resolve_tools(read_only_names)
+    return tools
