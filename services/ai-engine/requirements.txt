@@ -1,6 +1,9 @@
 # AI Framework
 agno[openai,anthropic,pinecone,postgres]
 
+# AG-UI Protocol for CopilotKit integration
+ag-ui-protocol
+
 # Web Framework
 fastapi[standard]
 uvicorn[standard]
