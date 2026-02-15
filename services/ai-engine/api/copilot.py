@@ -186,19 +186,39 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
             thread_id=thread_id,
         )
 
-        # 3. Create support agent with customer email context
+        # 3. Build rich customer context
+        from agents.context_builder import build_full_context
+
+        customer_context = await build_full_context(
+            customer_email=customer_email,
+            conversation_history=None,  # TODO: Add conversation history from DB
+            outstanding_info=None,  # TODO: Add outstanding detection
+        )
+
+        # 4. Create support agent with customer email context
         agent = create_support_agent(category, customer_email=customer_email)
 
-        # 4. Emit TEXT_MESSAGE_START
+        # 5. Prepend context to message
+        agent_input = message
+        if customer_context:
+            agent_input = f"{customer_context}\n\nCustomer message:\n{message}"
+
+        logger.info(
+            "agent_input_prepared",
+            has_context=bool(customer_context),
+            context_length=len(customer_context) if customer_context else 0,
+        )
+
+        # 6. Emit TEXT_MESSAGE_START
         yield encoder.encode(
             TextMessageStartEvent(
                 messageId=message_id,
             )
         )
 
-        # 5. Stream using Agno's native streaming
+        # 7. Stream using Agno's native streaming
         # agent.arun() returns async generator of RunContentEvent objects
-        stream = agent.arun(message, stream=True)
+        stream = agent.arun(agent_input, stream=True)
 
         async for chunk in stream:
             # Text content delta → TEXT_MESSAGE_CONTENT

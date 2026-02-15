@@ -37,6 +37,21 @@ class RouterOutput(BaseModel):
         default=None,
         description="Customer email if mentioned in the message.",
     )
+    sentiment: str = Field(
+        default="neutral",
+        description=(
+            "Customer sentiment: positive (grateful, satisfied), "
+            "neutral (just asking), negative (complaint, disappointed), "
+            "frustrated (angry, repeated issue, CAPS, !!!!)"
+        ),
+    )
+    escalation_signal: bool = Field(
+        default=False,
+        description=(
+            "True if customer explicitly wants human agent "
+            "(asks for 'manager', 'live person') or shows extreme frustration."
+        ),
+    )
 
 
 ROUTER_INSTRUCTIONS = [
@@ -50,6 +65,19 @@ ROUTER_INSTRUCTIONS = [
     "- high: damaged items, repeated cancellation requests",
     "- medium: most requests (default)",
     "- low: gratitude, simple questions",
+    "",
+    "Analyze SENTIMENT:",
+    "- positive: customer is grateful, satisfied (words: 'thank you', 'great service', 'love')",
+    "- neutral: simple question, no emotion",
+    "- negative: complaint, disappointed (words: 'problem', 'issue', 'not happy')",
+    "- frustrated: angry, repeated issue, EXCESSIVE CAPS, multiple !!!!, demands escalation",
+    "",
+    "Detect ESCALATION SIGNALS:",
+    "- Customer explicitly asks for human: 'manager', 'supervisor', 'live person', 'human agent'",
+    "- Extreme frustration with multiple failed attempts",
+    "- Threatening language or legal action",
+    "→ Set escalation_signal=True if ANY of above detected",
+    "",
     "If unclear, default to shipping_or_delivery_question with medium urgency.",
     "Respond ONLY with the structured output, no extra text.",
 ]
