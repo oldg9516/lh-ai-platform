@@ -15,6 +15,7 @@ from database.queries import (
     get_category_breakdown,
     get_eval_decisions,
     get_customer_patterns,
+    get_hitl_stats,
 )
 
 router = APIRouter()
@@ -52,6 +53,27 @@ class CustomerPattern(BaseModel):
     most_common_category: str
     last_interaction: str | None
     escalation_rate: float
+
+
+class ToolHITLStats(BaseModel):
+    """HITL stats for a single tool."""
+
+    tool_name: str
+    total_calls: int
+    approved: int
+    cancelled: int
+    approval_rate_pct: float
+
+
+class HITLStats(BaseModel):
+    """Human-in-the-Loop confirmation statistics."""
+
+    total_hitl_calls: int
+    approved: int
+    cancelled: int
+    pending: int
+    approval_rate_pct: float
+    by_tool: list[ToolHITLStats]
 
 
 @router.get("/overview", response_model=MetricsOverview)
@@ -115,3 +137,30 @@ async def get_patterns(
     """
     data = await asyncio.to_thread(get_customer_patterns, days, min_sessions)
     return [CustomerPattern(**row) for row in data]
+
+
+@router.get("/hitl-stats", response_model=HITLStats)
+async def get_hitl_statistics(
+    days: int = Query(7, ge=1, le=90, description="Number of days to look back")
+):
+    """Get HITL (Human-in-the-Loop) confirmation statistics.
+
+    Shows how often users approve vs cancel tool confirmations.
+    Useful for understanding:
+    - Which tools require most user intervention
+    - Overall approval rates
+    - Tools that might need better defaults or UX
+
+    Returns stats for tools that require explicit user confirmation
+    before execution (pause subscription, change address, etc.).
+    """
+    # Run query in thread pool (sync psycopg)
+    data = await asyncio.to_thread(get_hitl_stats, days)
+    return HITLStats(
+        total_hitl_calls=data["total_hitl_calls"],
+        approved=data["approved"],
+        cancelled=data["cancelled"],
+        pending=data["pending"],
+        approval_rate_pct=data["approval_rate_pct"],
+        by_tool=[ToolHITLStats(**tool) for tool in data["by_tool"]],
+    )

@@ -217,3 +217,161 @@ def get_customer_patterns(days: int = 30, min_sessions: int = 2) -> list[dict[st
                 }
                 for row in cur.fetchall()
             ]
+
+
+def get_learning_candidates(days: int = 7, limit: int = 50) -> list[dict[str, Any]]:
+    """Get sessions that are good candidates for learning/training.
+
+    Identifies cases where AI had low confidence or made multiple attempts.
+
+    Args:
+        days: Number of days to look back
+        limit: Maximum number of candidates to return
+
+    Returns:
+        List of dicts with keys:
+            - session_id: Session identifier
+            - customer_email: Customer email
+            - primary_category: Category classification
+            - eval_decision: Final decision (draft/escalate)
+            - eval_confidence: Confidence level
+            - total_messages: Number of messages in conversation
+            - tools_used_count: Number of tool calls made
+            - created_at: Timestamp
+            - reason: Why this is a learning candidate
+    """
+    since = datetime.now() - timedelta(days=days)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH session_tools AS (
+                    SELECT
+                        session_id,
+                        COUNT(*) as tool_count,
+                        COUNT(DISTINCT tool_name) as unique_tools
+                    FROM tool_executions
+                    GROUP BY session_id
+                )
+                SELECT
+                    s.session_id,
+                    s.customer_email,
+                    s.primary_category,
+                    s.eval_decision,
+                    s.eval_confidence,
+                    s.total_messages,
+                    COALESCE(st.tool_count, 0) as tools_used_count,
+                    s.created_at,
+                    CASE
+                        WHEN s.eval_decision = 'draft' AND s.eval_confidence = 'low' THEN 'Low confidence draft'
+                        WHEN s.eval_decision = 'escalate' THEN 'Escalated to human'
+                        WHEN st.tool_count > 3 THEN 'Multiple tool calls (complex case)'
+                        WHEN s.total_messages > 5 THEN 'Extended conversation'
+                        ELSE 'Edge case'
+                    END as reason
+                FROM chat_sessions s
+                LEFT JOIN session_tools st ON s.session_id = st.session_id
+                WHERE s.created_at >= %s
+                    AND (
+                        s.eval_decision IN ('draft', 'escalate')
+                        OR s.eval_confidence = 'low'
+                        OR st.tool_count > 3
+                        OR s.total_messages > 5
+                    )
+                ORDER BY s.created_at DESC
+                LIMIT %s
+            """,
+                (since, limit),
+            )
+            return [
+                {
+                    "session_id": row[0],
+                    "customer_email": row[1],
+                    "primary_category": row[2],
+                    "eval_decision": row[3],
+                    "eval_confidence": row[4],
+                    "total_messages": row[5],
+                    "tools_used_count": row[6],
+                    "created_at": row[7].isoformat() if row[7] else None,
+                    "reason": row[8],
+                }
+                for row in cur.fetchall()
+            ]
+
+
+def get_hitl_stats(days: int = 7) -> dict[str, Any]:
+    """Get HITL (Human-in-the-Loop) confirmation statistics.
+
+    Args:
+        days: Number of days to look back
+
+    Returns:
+        dict with keys:
+            - total_hitl_calls: Total tool calls requiring approval
+            - approved: Number of approved confirmations
+            - cancelled: Number of cancelled confirmations
+            - pending: Number still pending
+            - approval_rate_pct: Approval rate percentage
+            - by_tool: Breakdown by tool name with approval rates
+    """
+    since = datetime.now() - timedelta(days=days)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            # Overall stats
+            cur.execute(
+                """
+                SELECT
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE approval_status = 'approved') as approved,
+                    COUNT(*) FILTER (WHERE approval_status = 'cancelled') as cancelled,
+                    COUNT(*) FILTER (WHERE approval_status IS NULL) as pending
+                FROM tool_executions
+                WHERE created_at >= %s
+                    AND requires_approval = true
+            """,
+                (since,),
+            )
+            overall = cur.fetchone()
+            total = overall[0] or 0
+            approved = overall[1] or 0
+            cancelled = overall[2] or 0
+            pending = overall[3] or 0
+
+            # By tool breakdown
+            cur.execute(
+                """
+                SELECT
+                    tool_name,
+                    COUNT(*) as total_calls,
+                    COUNT(*) FILTER (WHERE approval_status = 'approved') as approved,
+                    COUNT(*) FILTER (WHERE approval_status = 'cancelled') as cancelled,
+                    ROUND(100.0 * COUNT(*) FILTER (WHERE approval_status = 'approved') / NULLIF(COUNT(*), 0), 2) as approval_rate
+                FROM tool_executions
+                WHERE created_at >= %s
+                    AND requires_approval = true
+                GROUP BY tool_name
+                ORDER BY total_calls DESC
+            """,
+                (since,),
+            )
+            by_tool = [
+                {
+                    "tool_name": row[0],
+                    "total_calls": row[1],
+                    "approved": row[2],
+                    "cancelled": row[3],
+                    "approval_rate_pct": float(row[4]) if row[4] else 0,
+                }
+                for row in cur.fetchall()
+            ]
+
+            return {
+                "total_hitl_calls": total,
+                "approved": approved,
+                "cancelled": cancelled,
+                "pending": pending,
+                "approval_rate_pct": round(100 * approved / total, 2) if total > 0 else 0,
+                "by_tool": by_tool,
+            }

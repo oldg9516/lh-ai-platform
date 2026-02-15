@@ -39,11 +39,12 @@ async def health():
 
 
 # Import custom routers
-from api import metrics, charts, query
+from api import metrics, charts, query, learning
 
 app.include_router(metrics.router, prefix="/metrics", tags=["metrics"])
 app.include_router(charts.router, prefix="/charts", tags=["charts"])
 app.include_router(query.router, tags=["query"])
+app.include_router(learning.router, prefix="/learning", tags=["learning"])
 
 # Initialize AgentOS with analytics agent and custom app
 agent_os = AgentOS(
