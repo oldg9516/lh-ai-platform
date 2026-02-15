@@ -25,21 +25,30 @@ export const runtime = "edge";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
+    // Log full request body for debugging
+    console.log("[AG-UI] Full request body:", JSON.stringify(body, null, 2));
+
     const { threadId, messages } = body;
 
     // Log request for debugging (Vercel best practice: structured logging)
-    console.log("[AG-UI] Received request:", {
+    console.log("[AG-UI] Parsed fields:", {
       threadId,
       messageCount: messages?.length || 0,
+      bodyKeys: Object.keys(body),
     });
 
-    // Validate required fields
+    // Validate required fields - make threadId optional for now to debug
     if (!threadId) {
-      return new Response(
-        JSON.stringify({ error: "threadId is required" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      console.warn("[AG-UI] No threadId provided, using fallback");
+      // return new Response(
+      //   JSON.stringify({ error: "threadId is required" }),
+      //   { status: 400, headers: { "Content-Type": "application/json" } }
+      // );
     }
+
+    // Use fallback threadId if not provided
+    const actualThreadId = threadId || crypto.randomUUID();
 
     // TODO: Forward to FastAPI backend (ai-engine)
     // For now, return a simple response with proper AG-UI event types
@@ -54,7 +63,7 @@ export async function POST(req: NextRequest) {
               `data: ${JSON.stringify({
                 type: "RUN_STARTED",
                 runId: crypto.randomUUID(),
-                threadId,
+                threadId: actualThreadId,
               })}\n\n`
             )
           );
@@ -97,7 +106,7 @@ export async function POST(req: NextRequest) {
             encoder.encode(
               `data: ${JSON.stringify({
                 type: "RUN_FINISHED",
-                threadId,
+                threadId: actualThreadId,
               })}\n\n`
             )
           );
