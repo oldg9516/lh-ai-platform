@@ -71,12 +71,14 @@ async def runtime_info():
     Returns runtime information and available agents.
     Required by CopilotKit for agent discovery and capabilities.
     """
+    # CopilotKit expects both id and name fields for agents
     return {
         "version": "0.1.0",
         "runtime": "ag-ui-fastapi",
         "capabilities": ["streaming", "tools", "hitl"],
         "agents__unsafe_dev_only": [
             {
+                "id": "default",
                 "name": "default",
                 "description": "Lev Haolam Support Agent - handles all customer support categories",
             }
@@ -136,13 +138,23 @@ async def copilot_stream(request: Request):
                 }
 
             if method == "agent/connect":
-                agent_name = body.get("agentName", "support_agent")
+                # Extract agentId from params (CopilotKit sends it there)
+                params = body.get("params", {})
+                agent_id = params.get("agentId", "default")
+
+                logger.info(
+                    "agent_connect_request",
+                    agent_id=agent_id,
+                    params=params,
+                )
+
                 return {
                     "connected": True,
                     "agent": {
-                        "id": agent_name,
+                        "id": agent_id,
                         "name": "Lev Haolam Support Agent",
                         "description": "AI agent for customer support",
+                        "capabilities": ["streaming", "tools", "hitl"],
                     },
                 }
 
