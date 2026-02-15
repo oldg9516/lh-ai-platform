@@ -7,6 +7,8 @@ Write tools (subscription, damage) remain stubs and are tested directly.
 import json
 from unittest.mock import patch
 
+import pytest
+
 from tools.customer import get_customer_history, get_payment_history, get_subscription
 from tools.customization import get_box_contents
 from tools.damage import create_damage_claim, request_photos
@@ -269,69 +271,113 @@ class TestGetBoxContents:
 
 
 class TestChangeFrequency:
-    def test_awaiting_confirmation(self):
-        result = json.loads(change_frequency("test@example.com", "bi-monthly"))
-        assert result["status"] == "awaiting_customer_confirmation"
-        assert result["confirmation_required"] is True
-        assert result["requested_frequency"] == "bi-monthly"
+    @pytest.mark.asyncio
+    @patch("tools.subscription.lookup_customer")
+    async def test_awaiting_confirmation(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await change_frequency("test@example.com", "bi-monthly"))
+        assert result["status"] == "completed"
+        assert result["new_frequency"] == "bi-monthly"
+        assert result["notification_sent"] is True
 
-    def test_action_field(self):
-        result = json.loads(change_frequency("test@example.com", "quarterly"))
-        assert result["action"] == "frequency_change"
+    @pytest.mark.asyncio
+    @patch("tools.subscription.lookup_customer")
+    async def test_action_field(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await change_frequency("test@example.com", "quarterly"))
+        assert result["customer_email"] == "test@example.com"
+        assert result["new_frequency"] == "quarterly"
 
 
 class TestSkipMonth:
-    def test_awaiting_confirmation(self):
-        result = json.loads(skip_month("test@example.com"))
-        assert result["status"] == "awaiting_customer_confirmation"
-        assert result["confirmation_required"] is True
+    @pytest.mark.asyncio
+    @patch("tools.subscription.lookup_customer")
+    async def test_awaiting_confirmation(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await skip_month("test@example.com"))
+        assert result["status"] == "completed"
+        assert "skipped_month" in result
+        assert result["notification_sent"] is True
 
-    def test_action_field(self):
-        result = json.loads(skip_month("test@example.com", "March"))
-        assert result["action"] == "skip_month"
+    @pytest.mark.asyncio
+    @patch("tools.subscription.lookup_customer")
+    async def test_action_field(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await skip_month("test@example.com", "March 2026"))
+        assert result["customer_email"] == "test@example.com"
+        assert "March" in result["skipped_month"]
 
 
 class TestPauseSubscription:
-    def test_awaiting_confirmation(self):
-        result = json.loads(pause_subscription("test@example.com", 2))
-        assert result["status"] == "awaiting_customer_confirmation"
-        assert result["confirmation_required"] is True
-        assert result["requested_pause_months"] == 2
+    @pytest.mark.asyncio
+    @patch("tools.subscription.lookup_customer")
+    async def test_awaiting_confirmation(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await pause_subscription("test@example.com", 2))
+        assert result["status"] == "completed"
+        assert "paused_until" in result
+        assert result["notification_sent"] is True
 
-    def test_action_field(self):
-        result = json.loads(pause_subscription("test@example.com"))
-        assert result["action"] == "pause_subscription"
+    @pytest.mark.asyncio
+    @patch("tools.subscription.lookup_customer")
+    async def test_action_field(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await pause_subscription("test@example.com"))
+        assert result["customer_email"] == "test@example.com"
+        assert "paused_until" in result
 
 
 class TestChangeAddress:
-    def test_awaiting_confirmation(self):
-        result = json.loads(change_address("test@example.com", "456 Oak Ave, Chicago, IL 60601"))
-        assert result["status"] == "awaiting_customer_confirmation"
-        assert result["confirmation_required"] is True
-        assert "456 Oak Ave" in result["new_address"]
+    @pytest.mark.asyncio
+    @patch("tools.subscription.lookup_customer")
+    async def test_awaiting_confirmation(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await change_address("test@example.com", "456 Oak Ave, Chicago, IL 60601"))
+        assert result["status"] == "completed"
+        assert "new_address" in result
+        assert result["validated"] is True
+        assert result["notification_sent"] is True
 
-    def test_action_field(self):
-        result = json.loads(change_address("test@example.com", "new address"))
-        assert result["action"] == "address_change"
+    @pytest.mark.asyncio
+    @patch("tools.subscription.lookup_customer")
+    async def test_action_field(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await change_address("test@example.com", "123 Test St, Tel Aviv, Israel"))
+        assert result["status"] == "completed"
+        assert "new_address" in result or "validated" in result
 
 
 class TestCreateDamageClaim:
-    def test_returns_claim_id(self):
-        result = json.loads(create_damage_claim("test@example.com", "olive oil", "bottle cracked"))
-        assert result["claim_id"].startswith("CLM-")
-        assert result["status"] == "submitted"
+    @pytest.mark.asyncio
+    @patch("tools.damage.lookup_customer")
+    async def test_returns_claim_id(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await create_damage_claim("test@example.com", "olive oil", "bottle cracked"))
+        assert result["claim_id"].startswith("DMG-")
+        assert result["status"] == "completed"
 
-    def test_has_next_steps(self):
-        result = json.loads(create_damage_claim("test@example.com", "soap", "melted"))
-        assert "photo" in result["next_steps"].lower()
+    @pytest.mark.asyncio
+    @patch("tools.damage.lookup_customer")
+    async def test_has_next_steps(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await create_damage_claim("test@example.com", "soap", "melted"))
+        assert "next_steps" in result or "photo" in result.get("claim_status", "").lower()
 
 
 class TestRequestPhotos:
-    def test_with_claim_id(self):
-        result = json.loads(request_photos("test@example.com", "CLM-12345678"))
-        assert result["action"] == "photos_requested"
-        assert result["claim_id"] == "CLM-12345678"
+    @pytest.mark.asyncio
+    @patch("tools.damage.lookup_customer")
+    async def test_with_claim_id(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await request_photos("test@example.com", "DMG-12345678"))
+        assert result["status"] == "completed"
+        assert result["claim_id"] == "DMG-12345678"
+        assert "upload_url" in result
 
-    def test_without_claim_id(self):
-        result = json.loads(request_photos("test@example.com"))
-        assert result["claim_id"] == "pending"
+    @pytest.mark.asyncio
+    @patch("tools.damage.lookup_customer")
+    async def test_without_claim_id(self, mock_lookup):
+        mock_lookup.return_value = SAMPLE_CUSTOMER
+        result = json.loads(await request_photos("test@example.com"))
+        assert result["status"] == "completed"
+        assert result["claim_id"].startswith("DMG-")

@@ -1,17 +1,20 @@
-"""Damage and leaking item report tools (stubs).
+"""Damage and leaking item report tools.
 
+Phase 2: Uses Mock APIs to return realistic damage claim results.
 Tools for creating damage claims and requesting photo evidence.
 """
 
 import json
-import uuid
 
 import structlog
+
+from database.customer_queries import lookup_customer
+from mock_apis.factory import APIFactory
 
 logger = structlog.get_logger()
 
 
-def create_damage_claim(
+async def create_damage_claim(
     customer_email: str,
     item_description: str,
     damage_description: str,
@@ -20,8 +23,7 @@ def create_damage_claim(
 
     Use this tool when a customer reports receiving a damaged or
     leaking item. Creates a claim record that will be reviewed
-    by the support team. Ask the customer for photos to speed
-    up the resolution.
+    by the support team.
 
     Args:
         customer_email: The customer's email address.
@@ -31,21 +33,42 @@ def create_damage_claim(
     Returns:
         JSON string with claim ID, status, and next steps.
     """
-    claim_id = f"CLM-{uuid.uuid4().hex[:8].upper()}"
-    logger.info("tool_called", tool="create_damage_claim", email=customer_email, claim_id=claim_id)
-    return json.dumps({
-        "claim_id": claim_id,
-        "customer_email": customer_email,
-        "item_description": item_description,
-        "damage_description": damage_description,
-        "status": "submitted",
-        "next_steps": "Please send photos of the damaged item so we can process your claim quickly.",
-        "resolution_options": ["replacement_item", "full_box_replacement", "credit_to_account"],
-        "estimated_resolution_days": 3,
-    })
+    logger.info("tool_called", tool="create_damage_claim", email=customer_email, item=item_description)
+
+    # 1. Verify customer exists
+    customer = lookup_customer(customer_email)
+    if not customer:
+        return json.dumps({
+            "found": False,
+            "customer_email": customer_email,
+            "message": "Customer with this email not found.",
+        })
+
+    # 2. Call API
+    api = APIFactory.get_damage_claim_api()
+    result = await api.create_damage_claim(
+        customer_email, item_description, damage_description
+    )
+
+    # 3. Return result
+    if result["success"]:
+        return json.dumps({
+            "status": "completed",
+            "customer_email": customer_email,
+            "customer_name": customer.get("name"),
+            "claim_id": result["claim_id"],
+            "claim_status": result["status"],
+            "next_steps": result["next_steps"],
+            "message": f"Damage claim {result['claim_id']} created successfully.",
+        })
+    else:
+        return json.dumps({
+            "status": "error",
+            "message": result.get("error", "Failed to create damage claim"),
+        })
 
 
-def request_photos(
+async def request_photos(
     customer_email: str,
     claim_id: str = "",
 ) -> str:
@@ -56,16 +79,40 @@ def request_photos(
 
     Args:
         customer_email: The customer's email address.
-        claim_id: The damage claim ID (if already created).
+        claim_id: The damage claim ID (optional, if already created).
 
     Returns:
         JSON string with photo upload instructions.
     """
     logger.info("tool_called", tool="request_photos", email=customer_email, claim_id=claim_id)
-    return json.dumps({
-        "action": "photos_requested",
-        "customer_email": customer_email,
-        "claim_id": claim_id or "pending",
-        "instructions": "Please reply with photos showing the damaged item(s) and packaging. This helps us process your claim faster.",
-        "accepted_formats": ["jpg", "png", "heic"],
-    })
+
+    # 1. Verify customer exists
+    customer = lookup_customer(customer_email)
+    if not customer:
+        return json.dumps({
+            "found": False,
+            "customer_email": customer_email,
+            "message": "Customer with this email not found.",
+        })
+
+    # 2. Call API
+    api = APIFactory.get_damage_claim_api()
+    result = await api.request_photos(customer_email, claim_id or None)
+
+    # 3. Return result
+    if result["success"]:
+        return json.dumps({
+            "status": "completed",
+            "customer_email": customer_email,
+            "customer_name": customer.get("name"),
+            "claim_id": result["claim_id"],
+            "upload_url": result["upload_url"],
+            "instructions": result["instructions"],
+            "notification_sent": result["notification_sent"],
+            "message": "Photo upload instructions sent via email.",
+        })
+    else:
+        return json.dumps({
+            "status": "error",
+            "message": result.get("error", "Failed to send photo request"),
+        })

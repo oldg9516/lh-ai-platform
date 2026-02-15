@@ -1,6 +1,9 @@
 "use client";
 
 import { PauseSubscriptionForm } from "@/components/forms/PauseSubscriptionForm";
+import { ChangeFrequencyForm } from "@/components/forms/ChangeFrequencyForm";
+import { ChangeAddressForm } from "@/components/forms/ChangeAddressForm";
+import { DamageClaimForm } from "@/components/forms/DamageClaimForm";
 
 export default function HomePage() {
   return (
@@ -43,9 +46,9 @@ export default function HomePage() {
               <div className="flex items-start gap-3">
                 <span className="text-green-500 font-bold">✅</span>
                 <div>
-                  <p className="font-medium">PauseSubscriptionForm created</p>
+                  <p className="font-medium">4 HITL Forms created (Day 3 complete!)</p>
                   <p className="text-sm text-muted-foreground">
-                    First HITL component with confirmation UI
+                    PauseSubscription, ChangeFrequency, ChangeAddress, DamageClaim
                   </p>
                 </div>
               </div>
@@ -84,8 +87,11 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Hidden component - registers the HITL tool with CopilotKit */}
+        {/* Hidden components - register HITL tools with CopilotKit */}
         <PauseSubscriptionForm />
+        <ChangeFrequencyForm />
+        <ChangeAddressForm />
+        <DamageClaimForm />
 
         {/* CopilotSidebar will appear here when CopilotKit is active */}
         <div className="fixed bottom-4 right-4">

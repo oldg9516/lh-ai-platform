@@ -44,5 +44,13 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     app_version: str = "0.1.0"
 
+    # Mock APIs (for demo/development)
+    use_mock_apis: bool = True  # Switch between mock and real external APIs
+
+    # Real API credentials (optional, for production when use_mock_apis=False)
+    zoho_api_key: str | None = None
+    zoho_crm_url: str | None = None
+    google_maps_api_key: str | None = None
+
 
 settings = Settings()

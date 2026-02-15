@@ -176,7 +176,7 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
 
         # 2. Classify message to determine category
         router_output = await classify_message(message)
-        category = router_output.primary_category
+        category = router_output.primary
 
         logger.info(
             "agent_stream_classified",
@@ -185,7 +185,7 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
         )
 
         # 3. Create support agent (no email for now, Phase 6.3 will add context)
-        agent = create_support_agent(category, email=None)
+        agent = create_support_agent(category)
 
         # 4. Emit TEXT_MESSAGE_START
         yield encoder.encode(

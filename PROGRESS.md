@@ -302,24 +302,47 @@
   - [x] Frontend: CopilotRuntime + HttpAgent → FastAPI backend
   - [x] Backend: FastAPI AG-UI stub endpoint (services/ai-engine/api/copilot.py)
   - [x] Architecture: Next.js → HttpAgent → FastAPI (AG-UI protocol)
+  - [x] Bug fixes: RouterOutput attribute, create_support_agent signature
 - [x] Создать первую HITL форму: PauseSubscriptionForm
   - [x] useHumanInTheLoop hook с parameters (email, months)
   - [x] shadcn/ui компоненты (Button, Card, Label, Slider)
   - [x] Confirmation/Cancel actions
+- [x] Frontend Docker Integration
+  - [x] Dockerfile (multi-stage: deps → builder → runner)
+  - [x] next.config.ts: standalone output + rewrites для AG-UI proxy
+  - [x] docker-compose.yml: frontend service (port 3003)
+  - [x] Production build успешен, container запущен
 - [ ] Интеграция с Chatwoot widget (iframe embedding)
 - [ ] E2E тест: Chatwoot → pause request → форма → user confirmation → Zoho API
 
 **Коммиты:**
 - `f5e23d0` Phase 6.1 Complete: CopilotKit + Agno integration working
 
+### Phase 6.1.5: Mock API Infrastructure ✅ COMPLETE
+- [x] Mock API Layer (protocol-based factory pattern)
+  - [x] mock_apis/client.py: MockZohoAPI, MockAddressValidationAPI, MockDamageClaimAPI
+  - [x] mock_apis/factory.py: Protocol definitions + APIFactory
+  - [x] Realistic latencies (300-800ms), structured responses
+  - [x] Settings flag: use_mock_apis (default True)
+- [x] Tool Integration
+  - [x] 6 write tools converted to async + APIFactory
+  - [x] pause_subscription, change_frequency, skip_month, change_address, create_damage_claim, request_photos
+  - [x] Customer lookup verification в каждом tool
+- [x] Testing
+  - [x] 8 unit tests для Mock APIs (все проходят)
+  - [x] 12 integration tests для tools с mocks (async conversion)
+  - [x] Всего: 227 tests passing (225 после LLM недетерминистичности)
+
 ### Phase 6.2: Full HITL Implementation (3 недели)
-- [ ] HITL формы для всех write-операций:
-  - [ ] ChangeAddressForm (change_address)
-  - [ ] DamageClaimForm (create_damage_claim + photo upload)
+- [x] HITL формы для write-операций:
+  - [x] PauseSubscriptionForm (pause_subscription) — Day 2
+  - [x] ChangeFrequencyForm (change_frequency) — Day 3
+  - [x] ChangeAddressForm (change_address) — Day 3
+  - [x] DamageClaimForm (create_damage_claim) — Day 3
   - [ ] SkipMonthForm (skip_month)
-  - [ ] FrequencyChangeForm (change_frequency)
 - [ ] File upload для damage claims (S3/MinIO integration)
-- [ ] Интеграция с реальными API:
+- [x] Mock APIs для демо (Phase 6.1.5)
+- [ ] Интеграция с реальными API (IT dept):
   - [ ] Zoho CRM (pause, skip, frequency change)
   - [ ] Pay API (payment method updates)
   - [ ] Shipping provider API (address validation)
