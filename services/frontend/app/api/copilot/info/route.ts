@@ -14,7 +14,7 @@ export async function GET() {
       {
         name: "support_agent",
         description: "Lev Haolam customer support assistant with HITL confirmations",
-        type: "custom",
+        // Remove type field - let CopilotKit auto-detect
       },
     ],
     actions: [],
