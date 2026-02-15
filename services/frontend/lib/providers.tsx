@@ -28,6 +28,7 @@ export function Providers({ children }: ProvidersProps) {
     <QueryClientProvider client={queryClient}>
       <CopilotKit
         runtimeUrl="/api/copilot"
+        agent="default"
         threadId={threadId}
         showDevConsole={process.env.NODE_ENV === "development"}
       >
