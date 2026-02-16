@@ -81,6 +81,18 @@ HITL_TOOL_NAMES: set[str] = {
     "create_damage_claim",
 }
 
+# --- Display Tool Names (rendered as rich widgets on frontend) ---
+
+DISPLAY_TOOL_NAMES: set[str] = {
+    "display_tracking",
+    "display_orders",
+    "display_box_contents",
+    "display_payments",
+}
+
+# Tools that should be emitted as AG-UI ToolCall events (not executed server-side)
+FRONTEND_TOOL_NAMES: set[str] = HITL_TOOL_NAMES | DISPLAY_TOOL_NAMES
+
 
 # --- OpenAI Function Schemas ---
 
@@ -259,6 +271,63 @@ OPENAI_TOOL_SCHEMAS: dict[str, dict] = {
                     "customer_email": {"type": "string", "description": "Customer email address"},
                 },
                 "required": ["subscription_id", "customer_email"],
+            },
+        },
+    },
+    # --- Display Tools (informational widgets rendered on frontend) ---
+    "display_tracking": {
+        "type": "function",
+        "function": {
+            "name": "display_tracking",
+            "description": "Display a rich tracking widget to the customer showing package tracking information. Call this AFTER calling track_package to show the data visually.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_email": {"type": "string", "description": "Customer email address"},
+                },
+                "required": ["customer_email"],
+            },
+        },
+    },
+    "display_orders": {
+        "type": "function",
+        "function": {
+            "name": "display_orders",
+            "description": "Display a rich order history widget to the customer. Call this AFTER calling get_customer_history to show the data visually.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_email": {"type": "string", "description": "Customer email address"},
+                },
+                "required": ["customer_email"],
+            },
+        },
+    },
+    "display_box_contents": {
+        "type": "function",
+        "function": {
+            "name": "display_box_contents",
+            "description": "Display a rich widget showing the contents of the customer's last box. Call this AFTER calling get_box_contents to show the data visually.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_email": {"type": "string", "description": "Customer email address"},
+                },
+                "required": ["customer_email"],
+            },
+        },
+    },
+    "display_payments": {
+        "type": "function",
+        "function": {
+            "name": "display_payments",
+            "description": "Display a rich payment history widget to the customer. Call this AFTER calling get_payment_history to show the data visually.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_email": {"type": "string", "description": "Customer email address"},
+                },
+                "required": ["customer_email"],
             },
         },
     },
@@ -509,6 +578,19 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
             "If you need the customer's email, ask for it first, then call the tool."
         )
 
+        # Add display widget instructions
+        instructions.append(
+            "\n\nDISPLAY WIDGETS:\n"
+            "You have display tools (display_tracking, display_orders, display_box_contents, display_payments) "
+            "that render rich visual widgets in the chat. ALWAYS use them after fetching data:\n"
+            "- After calling track_package, also call display_tracking to show tracking visually.\n"
+            "- After calling get_customer_history, also call display_orders to show order history.\n"
+            "- After calling get_box_contents, also call display_box_contents to show box items.\n"
+            "- After calling get_payment_history, also call display_payments to show payment timeline.\n"
+            "Call the display tool in the SAME turn as the data fetch tool. "
+            "Still include a brief text summary in your response."
+        )
+
         system_prompt = "\n\n".join(instructions)
 
         # 5. Build user content with context
@@ -522,13 +604,31 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
             {"role": "user", "content": user_content},
         ]
 
-        # 7. Get tool schemas for this category
+        # 7. Get tool schemas for this category + display tools
+        # Map read-only tools to their corresponding display widgets
+        READ_TO_DISPLAY = {
+            "track_package": "display_tracking",
+            "get_customer_history": "display_orders",
+            "get_box_contents": "display_box_contents",
+            "get_payment_history": "display_payments",
+        }
+
         openai_tools = []
+        display_tools_to_add: set[str] = set()
         if config.tools:
             for name in config.tools:
                 schema = OPENAI_TOOL_SCHEMAS.get(name)
                 if schema:
                     openai_tools.append(schema)
+                # Track which display tools to add
+                if name in READ_TO_DISPLAY:
+                    display_tools_to_add.add(READ_TO_DISPLAY[name])
+
+        # Add display tool schemas
+        for display_name in display_tools_to_add:
+            schema = OPENAI_TOOL_SCHEMAS.get(display_name)
+            if schema:
+                openai_tools.append(schema)
 
         logger.info(
             "copilot_openai_call",
@@ -634,11 +734,11 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
                     "copilot_tool_call",
                     tool=tool_name,
                     args=tool_args,
-                    is_hitl=tool_name in HITL_TOOL_NAMES,
+                    is_hitl=tool_name in FRONTEND_TOOL_NAMES,
                     iteration=iteration,
                 )
 
-                if tool_name in HITL_TOOL_NAMES:
+                if tool_name in FRONTEND_TOOL_NAMES:
                     # HITL tool: emit AG-UI ToolCall events for CopilotKit
                     yield encoder.encode(
                         ToolCallStartEvent(
@@ -926,4 +1026,51 @@ async def execute_tool(req: ExecuteToolRequest):
 
     except Exception as e:
         logger.error("execute_tool_error", tool_name=req.tool_name, error=str(e), exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+
+# --- Read-Only Data Fetch Endpoint (for display widgets) ---
+
+READ_ONLY_TOOLS: set[str] = {
+    "get_subscription",
+    "get_customer_history",
+    "get_payment_history",
+    "track_package",
+    "get_box_contents",
+}
+
+
+class FetchDataRequest(BaseModel):
+    """Request to fetch read-only data for display widgets."""
+    tool_name: str
+    tool_args: dict
+
+
+@router.post("/fetch-data")
+async def fetch_data(req: FetchDataRequest):
+    """Fetch read-only data for display widgets.
+
+    Called by frontend widgets to load data for rich visual display.
+    Only allows read-only tools (no write operations).
+    """
+    if req.tool_name not in READ_ONLY_TOOLS:
+        logger.warning("fetch_data_rejected", tool_name=req.tool_name)
+        return {"status": "error", "message": f"Tool '{req.tool_name}' is not a read-only tool"}
+
+    tool_fn = TOOL_REGISTRY.get(req.tool_name)
+    if not tool_fn:
+        logger.error("fetch_data_not_found", tool_name=req.tool_name)
+        return {"status": "error", "message": f"Tool '{req.tool_name}' not found"}
+
+    try:
+        result = tool_fn(**req.tool_args)
+        if inspect.isawaitable(result):
+            result = await result
+        result_data = json_lib.loads(result)
+
+        logger.info("fetch_data_success", tool_name=req.tool_name)
+        return {"status": "ok", "result": result_data}
+
+    except Exception as e:
+        logger.error("fetch_data_error", tool_name=req.tool_name, error=str(e), exc_info=True)
         return {"status": "error", "message": str(e)}

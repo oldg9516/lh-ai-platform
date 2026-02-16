@@ -5,6 +5,10 @@ import { ChangeFrequencyForm } from "@/components/forms/ChangeFrequencyForm";
 import { ChangeAddressForm } from "@/components/forms/ChangeAddressForm";
 import { DamageClaimForm } from "@/components/forms/DamageClaimForm";
 import { SkipMonthForm } from "@/components/forms/SkipMonthForm";
+import { TrackingWidget } from "@/components/widgets/TrackingWidget";
+import { OrderHistoryWidget } from "@/components/widgets/OrderHistoryWidget";
+import { BoxContentsWidget } from "@/components/widgets/BoxContentsWidget";
+import { PaymentHistoryWidget } from "@/components/widgets/PaymentHistoryWidget";
 
 export default function HomePage() {
   return (
@@ -74,6 +78,11 @@ export default function HomePage() {
         <ChangeAddressForm />
         <DamageClaimForm />
         <SkipMonthForm />
+        {/* Informational display widgets */}
+        <TrackingWidget />
+        <OrderHistoryWidget />
+        <BoxContentsWidget />
+        <PaymentHistoryWidget />
       </div>
     </main>
   );
