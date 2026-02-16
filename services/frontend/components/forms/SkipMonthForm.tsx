@@ -32,11 +32,6 @@ function getUpcomingMonths(): { value: string; label: string }[] {
 }
 
 export function SkipMonthForm() {
-  const [selectedMonth, setSelectedMonth] = useState<string>("next");
-  const [loading, setLoading] = useState(false);
-
-  const upcomingMonths = getUpcomingMonths();
-
   useHumanInTheLoop({
     name: "skip_month",
     description: "Skip one month of customer subscription. Requires human confirmation.",
@@ -54,16 +49,27 @@ export function SkipMonthForm() {
         required: false,
       },
     ],
-    render: ({ args, respond, status }) => {
-      if (!respond) return <></>;
+    render: ({ args, status, respond }) => {
+      const monthArg = String(args.month || "next");
+      const [selectedMonth, setSelectedMonth] = useState<string>(monthArg);
+      const [loading, setLoading] = useState(false);
+      const upcomingMonths = getUpcomingMonths();
+      const customerEmail = String(args.customer_email || "");
 
-      const { customer_email, month } = args;
-
-      if (month && month !== "next" && selectedMonth === "next") {
-        setSelectedMonth(month);
+      if (status === "complete") {
+        return (
+          <Card className="w-full max-w-md mx-auto border-green-500">
+            <CardContent className="p-4">
+              <p className="text-sm text-green-700">Action completed.</p>
+            </CardContent>
+          </Card>
+        );
       }
 
+      const isExecuting = status === "executing" && !!respond;
+
       const handleApprove = async () => {
+        if (!respond) return;
         setLoading(true);
         try {
           const res = await fetch("/api/copilot/execute-tool", {
@@ -71,7 +77,7 @@ export function SkipMonthForm() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               tool_name: "skip_month",
-              tool_args: { customer_email, month: selectedMonth },
+              tool_args: { customer_email: customerEmail, month: selectedMonth },
             }),
           });
           const data = await res.json();
@@ -92,7 +98,7 @@ export function SkipMonthForm() {
           <CardHeader>
             <CardTitle>Skip Month</CardTitle>
             <CardDescription>
-              Skip a delivery month for <strong>{customer_email}</strong>
+              Skip a delivery month for <strong>{customerEmail}</strong>
             </CardDescription>
           </CardHeader>
 
@@ -104,7 +110,7 @@ export function SkipMonthForm() {
               <Select
                 value={selectedMonth}
                 onValueChange={setSelectedMonth}
-                disabled={status !== "executing" || loading}
+                disabled={!isExecuting || loading}
               >
                 <SelectTrigger id="skip-month">
                   <SelectValue placeholder="Select month to skip" />
@@ -138,15 +144,15 @@ export function SkipMonthForm() {
               variant="default"
               className="flex-1"
               onClick={handleApprove}
-              disabled={status !== "executing" || loading}
+              disabled={!isExecuting || loading}
             >
               {loading ? "Processing..." : "Confirm Skip"}
             </Button>
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => respond("CANCELLED: User declined skip")}
-              disabled={status !== "executing" || loading}
+              onClick={() => respond?.("CANCELLED: User declined skip")}
+              disabled={!isExecuting || loading}
             >
               Cancel
             </Button>

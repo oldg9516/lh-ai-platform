@@ -15,11 +15,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 
 export function ChangeAddressForm() {
-  const [street, setStreet] = useState<string>("");
-  const [city, setCity] = useState<string>("");
-  const [country, setCountry] = useState<string>("Israel");
-  const [loading, setLoading] = useState(false);
-
   useHumanInTheLoop({
     name: "change_address",
     description: "Change customer shipping address. Requires human confirmation.",
@@ -37,21 +32,31 @@ export function ChangeAddressForm() {
         required: true,
       },
     ],
-    render: ({ args, respond, status }) => {
-      if (!respond) return <></>;
+    render: ({ args, status, respond }) => {
+      const addressArg = String(args.new_address || "");
+      const parts = addressArg ? addressArg.split(",").map((p) => p.trim()) : [];
 
-      const { customer_email, new_address } = args;
+      const [street, setStreet] = useState<string>(parts[0] || "");
+      const [city, setCity] = useState<string>(parts[1] || "");
+      const [country, setCountry] = useState<string>(parts[2] || "Israel");
+      const [loading, setLoading] = useState(false);
+      const customerEmail = String(args.customer_email || "");
 
-      if (new_address && street === "") {
-        const parts = new_address.split(",").map((p: string) => p.trim());
-        setStreet(parts[0] || "");
-        setCity(parts[1] || "");
-        setCountry(parts[2] || "Israel");
+      if (status === "complete") {
+        return (
+          <Card className="w-full max-w-md mx-auto border-green-500">
+            <CardContent className="p-4">
+              <p className="text-sm text-green-700">Action completed.</p>
+            </CardContent>
+          </Card>
+        );
       }
 
+      const isExecuting = status === "executing" && !!respond;
       const fullAddress = `${street}, ${city}, ${country}`;
 
       const handleApprove = async () => {
+        if (!respond) return;
         setLoading(true);
         try {
           const res = await fetch("/api/copilot/execute-tool", {
@@ -59,7 +64,7 @@ export function ChangeAddressForm() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               tool_name: "change_address",
-              tool_args: { customer_email, new_address: fullAddress },
+              tool_args: { customer_email: customerEmail, new_address: fullAddress },
             }),
           });
           const data = await res.json();
@@ -80,7 +85,7 @@ export function ChangeAddressForm() {
           <CardHeader>
             <CardTitle>Change Shipping Address</CardTitle>
             <CardDescription>
-              Update delivery address for <strong>{customer_email}</strong>
+              Update delivery address for <strong>{customerEmail}</strong>
             </CardDescription>
           </CardHeader>
 
@@ -92,7 +97,7 @@ export function ChangeAddressForm() {
                 placeholder="123 Main St, Apt 4B"
                 value={street}
                 onChange={(e) => setStreet(e.target.value)}
-                disabled={status !== "executing" || loading}
+                disabled={!isExecuting || loading}
               />
             </div>
 
@@ -103,7 +108,7 @@ export function ChangeAddressForm() {
                 placeholder="Tel Aviv"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                disabled={status !== "executing" || loading}
+                disabled={!isExecuting || loading}
               />
             </div>
 
@@ -114,7 +119,7 @@ export function ChangeAddressForm() {
                 placeholder="Israel"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
-                disabled={status !== "executing" || loading}
+                disabled={!isExecuting || loading}
               />
             </div>
 
@@ -136,15 +141,15 @@ export function ChangeAddressForm() {
               variant="default"
               className="flex-1"
               onClick={handleApprove}
-              disabled={status !== "executing" || !street || !city || loading}
+              disabled={!isExecuting || !street || !city || loading}
             >
               {loading ? "Processing..." : "Confirm Address"}
             </Button>
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => respond("CANCELLED: User declined address change")}
-              disabled={status !== "executing" || loading}
+              onClick={() => respond?.("CANCELLED: User declined address change")}
+              disabled={!isExecuting || loading}
             >
               Cancel
             </Button>

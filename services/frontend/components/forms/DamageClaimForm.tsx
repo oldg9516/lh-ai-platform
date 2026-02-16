@@ -16,10 +16,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 
 export function DamageClaimForm() {
-  const [item, setItem] = useState<string>("");
-  const [description, setDescription] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-
   useHumanInTheLoop({
     name: "create_damage_claim",
     description: "Create damage claim for damaged/leaking item. Requires human confirmation.",
@@ -43,19 +39,26 @@ export function DamageClaimForm() {
         required: true,
       },
     ],
-    render: ({ args, respond, status }) => {
-      if (!respond) return <></>;
+    render: ({ args, status, respond }) => {
+      const [item, setItem] = useState<string>(String(args.item_description || ""));
+      const [description, setDescription] = useState<string>(String(args.damage_description || ""));
+      const [loading, setLoading] = useState(false);
+      const customerEmail = String(args.customer_email || "");
 
-      const { customer_email, item_description, damage_description } = args;
+      if (status === "complete") {
+        return (
+          <Card className="w-full max-w-md mx-auto border-green-500">
+            <CardContent className="p-4">
+              <p className="text-sm text-green-700">Action completed.</p>
+            </CardContent>
+          </Card>
+        );
+      }
 
-      if (item_description && item === "") {
-        setItem(item_description);
-      }
-      if (damage_description && description === "") {
-        setDescription(damage_description);
-      }
+      const isExecuting = status === "executing" && !!respond;
 
       const handleApprove = async () => {
+        if (!respond) return;
         setLoading(true);
         try {
           const res = await fetch("/api/copilot/execute-tool", {
@@ -64,7 +67,7 @@ export function DamageClaimForm() {
             body: JSON.stringify({
               tool_name: "create_damage_claim",
               tool_args: {
-                customer_email,
+                customer_email: customerEmail,
                 item_description: item,
                 damage_description: description,
               },
@@ -88,7 +91,7 @@ export function DamageClaimForm() {
           <CardHeader>
             <CardTitle>Create Damage Claim</CardTitle>
             <CardDescription>
-              File damage report for <strong>{customer_email}</strong>
+              File damage report for <strong>{customerEmail}</strong>
             </CardDescription>
           </CardHeader>
 
@@ -100,7 +103,7 @@ export function DamageClaimForm() {
                 placeholder="e.g., olive oil bottle"
                 value={item}
                 onChange={(e) => setItem(e.target.value)}
-                disabled={status !== "executing" || loading}
+                disabled={!isExecuting || loading}
               />
             </div>
 
@@ -111,7 +114,7 @@ export function DamageClaimForm() {
                 placeholder="Describe the damage (e.g., bottle cracked, oil leaked)"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                disabled={status !== "executing" || loading}
+                disabled={!isExecuting || loading}
                 rows={4}
               />
             </div>
@@ -134,15 +137,15 @@ export function DamageClaimForm() {
               variant="default"
               className="flex-1"
               onClick={handleApprove}
-              disabled={status !== "executing" || !item || !description || loading}
+              disabled={!isExecuting || !item || !description || loading}
             >
               {loading ? "Processing..." : "Create Claim"}
             </Button>
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => respond("CANCELLED: User declined claim creation")}
-              disabled={status !== "executing" || loading}
+              onClick={() => respond?.("CANCELLED: User declined claim creation")}
+              disabled={!isExecuting || loading}
             >
               Cancel
             </Button>

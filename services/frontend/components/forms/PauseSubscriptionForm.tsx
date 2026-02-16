@@ -15,9 +15,6 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 
 export function PauseSubscriptionForm() {
-  const [selectedMonths, setSelectedMonths] = useState<number>(1);
-  const [loading, setLoading] = useState(false);
-
   useHumanInTheLoop({
     name: "pause_subscription",
     description: "Pause customer subscription for N months. Requires human confirmation.",
@@ -35,12 +32,33 @@ export function PauseSubscriptionForm() {
         required: true,
       },
     ],
-    render: ({ args, respond, status }) => {
-      if (!respond) return <></>;
+    render: ({ args, status, respond }) => {
+      const durationRaw = args.duration_months;
+      const initMonths =
+        typeof durationRaw === "number"
+          ? durationRaw
+          : parseInt(String(durationRaw)) || 1;
+      const [selectedMonths, setSelectedMonths] = useState<number>(
+        Math.min(Math.max(initMonths, 1), 12)
+      );
+      const [loading, setLoading] = useState(false);
 
-      const { customer_email, duration_months } = args;
+      const customerEmail = String(args.customer_email || "");
+
+      if (status === "complete") {
+        return (
+          <Card className="w-full max-w-md mx-auto border-green-500">
+            <CardContent className="p-4">
+              <p className="text-sm text-green-700">Action completed.</p>
+            </CardContent>
+          </Card>
+        );
+      }
+
+      const isExecuting = status === "executing" && !!respond;
 
       const handleApprove = async () => {
+        if (!respond) return;
         setLoading(true);
         try {
           const res = await fetch("/api/copilot/execute-tool", {
@@ -48,12 +66,12 @@ export function PauseSubscriptionForm() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               tool_name: "pause_subscription",
-              tool_args: { customer_email, duration_months: selectedMonths },
+              tool_args: { customer_email: customerEmail, duration_months: selectedMonths },
             }),
           });
           const data = await res.json();
           if (data.status === "completed") {
-            respond(`APPROVED: Subscription paused until ${data.result.paused_until}`);
+            respond(`APPROVED: Subscription paused for ${selectedMonths} month(s) until ${data.result.paused_until}`);
           } else {
             respond(`ERROR: ${data.result?.message || data.message}`);
           }
@@ -69,7 +87,7 @@ export function PauseSubscriptionForm() {
           <CardHeader>
             <CardTitle>Pause Subscription</CardTitle>
             <CardDescription>
-              Confirm subscription pause for <strong>{customer_email}</strong>
+              Confirm subscription pause for <strong>{customerEmail}</strong>
             </CardDescription>
           </CardHeader>
 
@@ -86,7 +104,7 @@ export function PauseSubscriptionForm() {
                 value={[selectedMonths]}
                 onValueChange={(value) => setSelectedMonths(value[0])}
                 className="w-full"
-                disabled={status !== "executing" || loading}
+                disabled={!isExecuting || loading}
               />
               <p className="text-sm text-muted-foreground">
                 Subscription will resume automatically after {selectedMonths} month(s)
@@ -111,15 +129,15 @@ export function PauseSubscriptionForm() {
               variant="default"
               className="flex-1"
               onClick={handleApprove}
-              disabled={status !== "executing" || loading}
+              disabled={!isExecuting || loading}
             >
               {loading ? "Processing..." : "Confirm Pause"}
             </Button>
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => respond("CANCELLED: User declined pause")}
-              disabled={status !== "executing" || loading}
+              onClick={() => respond?.("CANCELLED: User declined pause")}
+              disabled={!isExecuting || loading}
             >
               Cancel
             </Button>

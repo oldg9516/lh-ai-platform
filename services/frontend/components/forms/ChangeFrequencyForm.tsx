@@ -21,9 +21,6 @@ import {
 } from "@/components/ui/select";
 
 export function ChangeFrequencyForm() {
-  const [selectedFrequency, setSelectedFrequency] = useState<string>("monthly");
-  const [loading, setLoading] = useState(false);
-
   useHumanInTheLoop({
     name: "change_frequency",
     description: "Change customer subscription frequency. Requires human confirmation.",
@@ -41,16 +38,26 @@ export function ChangeFrequencyForm() {
         required: true,
       },
     ],
-    render: ({ args, respond, status }) => {
-      if (!respond) return <></>;
+    render: ({ args, status, respond }) => {
+      const freqArg = String(args.new_frequency || "monthly");
+      const [selectedFrequency, setSelectedFrequency] = useState<string>(freqArg);
+      const [loading, setLoading] = useState(false);
+      const customerEmail = String(args.customer_email || "");
 
-      const { customer_email, new_frequency } = args;
-
-      if (new_frequency && selectedFrequency !== new_frequency) {
-        setSelectedFrequency(new_frequency);
+      if (status === "complete") {
+        return (
+          <Card className="w-full max-w-md mx-auto border-green-500">
+            <CardContent className="p-4">
+              <p className="text-sm text-green-700">Action completed.</p>
+            </CardContent>
+          </Card>
+        );
       }
 
+      const isExecuting = status === "executing" && !!respond;
+
       const handleApprove = async () => {
+        if (!respond) return;
         setLoading(true);
         try {
           const res = await fetch("/api/copilot/execute-tool", {
@@ -58,7 +65,7 @@ export function ChangeFrequencyForm() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               tool_name: "change_frequency",
-              tool_args: { customer_email, new_frequency: selectedFrequency },
+              tool_args: { customer_email: customerEmail, new_frequency: selectedFrequency },
             }),
           });
           const data = await res.json();
@@ -79,7 +86,7 @@ export function ChangeFrequencyForm() {
           <CardHeader>
             <CardTitle>Change Delivery Frequency</CardTitle>
             <CardDescription>
-              Update delivery frequency for <strong>{customer_email}</strong>
+              Update delivery frequency for <strong>{customerEmail}</strong>
             </CardDescription>
           </CardHeader>
 
@@ -91,7 +98,7 @@ export function ChangeFrequencyForm() {
               <Select
                 value={selectedFrequency}
                 onValueChange={setSelectedFrequency}
-                disabled={status !== "executing" || loading}
+                disabled={!isExecuting || loading}
               >
                 <SelectTrigger id="frequency">
                   <SelectValue placeholder="Select frequency" />
@@ -122,15 +129,15 @@ export function ChangeFrequencyForm() {
               variant="default"
               className="flex-1"
               onClick={handleApprove}
-              disabled={status !== "executing" || loading}
+              disabled={!isExecuting || loading}
             >
               {loading ? "Processing..." : "Confirm Change"}
             </Button>
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => respond("CANCELLED: User declined frequency change")}
-              disabled={status !== "executing" || loading}
+              onClick={() => respond?.("CANCELLED: User declined frequency change")}
+              disabled={!isExecuting || loading}
             >
               Cancel
             </Button>
