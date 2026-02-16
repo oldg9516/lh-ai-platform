@@ -2,6 +2,7 @@
 
 import { useHumanInTheLoop } from "@copilotkit/react-core";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -67,13 +68,22 @@ export function ChangeAddressForm() {
               tool_args: { customer_email: customerEmail, new_address: fullAddress },
             }),
           });
+          if (!res.ok) {
+            const errText = res.status === 429 ? "Too many requests. Please wait." : "Server error";
+            toast.error(errText);
+            respond(`ERROR: ${errText}`);
+            return;
+          }
           const data = await res.json();
           if (data.status === "completed") {
+            toast.success("Shipping address updated successfully");
             respond(`APPROVED: Address updated to ${data.result.new_address}`);
           } else {
+            toast.error(data.result?.message || data.message || "Action failed");
             respond(`ERROR: ${data.result?.message || data.message}`);
           }
         } catch (err) {
+          toast.error("Network error. Please check your connection.");
           respond(`ERROR: Failed to execute - ${err}`);
         } finally {
           setLoading(false);
@@ -136,10 +146,10 @@ export function ChangeAddressForm() {
             </div>
           </CardContent>
 
-          <CardFooter className="flex gap-2">
+          <CardFooter className="flex flex-col sm:flex-row gap-2">
             <Button
               variant="default"
-              className="flex-1"
+              className="flex-1 min-h-[44px]"
               onClick={handleApprove}
               disabled={!isExecuting || !street || !city || loading}
             >
@@ -147,7 +157,7 @@ export function ChangeAddressForm() {
             </Button>
             <Button
               variant="outline"
-              className="flex-1"
+              className="flex-1 min-h-[44px]"
               onClick={() => respond?.("CANCELLED: User declined address change")}
               disabled={!isExecuting || loading}
             >

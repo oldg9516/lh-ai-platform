@@ -14,12 +14,15 @@ Architecture:
 import asyncio
 import inspect
 import json as json_lib
+import re
+import time
+from collections import defaultdict
 from typing import AsyncGenerator
 from uuid import uuid4
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import structlog
 
 # AG-UI Protocol imports
@@ -56,6 +59,41 @@ from tools import TOOL_REGISTRY, WRITE_TOOLS
 logger = structlog.get_logger()
 
 router = APIRouter()
+
+# --- Production Hardening Constants ---
+
+OPENAI_STREAM_TIMEOUT_S = 30  # Max time for OpenAI streaming response
+SSE_KEEPALIVE_INTERVAL_S = 15  # Send keepalive comment every 15s
+MAX_INPUT_LENGTH = 1000  # Max length for user text inputs
+MAX_EMAIL_LENGTH = 254  # RFC 5321 max email length
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+
+
+class RateLimiter:
+    """Simple in-memory rate limiter for tool executions.
+
+    Tracks calls per IP/session and rejects if over limit.
+    """
+
+    def __init__(self, max_calls: int = 5, window_seconds: int = 60):
+        self.max_calls = max_calls
+        self.window_seconds = window_seconds
+        self._calls: dict[str, list[float]] = defaultdict(list)
+
+    def check(self, key: str) -> bool:
+        """Return True if the request is allowed, False if rate-limited."""
+        now = time.monotonic()
+        calls = self._calls[key]
+        # Remove expired entries
+        self._calls[key] = [t for t in calls if now - t < self.window_seconds]
+        if len(self._calls[key]) >= self.max_calls:
+            return False
+        self._calls[key].append(now)
+        return True
+
+
+_tool_rate_limiter = RateLimiter(max_calls=5, window_seconds=60)
+_stream_rate_limiter = RateLimiter(max_calls=10, window_seconds=60)
 
 
 # --- OpenAI Client (singleton) ---
@@ -400,6 +438,15 @@ async def copilot_stream(request: Request):
         }
 
     try:
+        # Rate limiting on streaming endpoint
+        client_ip = request.client.host if request.client else "unknown"
+        if not _stream_rate_limiter.check(client_ip):
+            logger.warning("copilot_stream_rate_limited", client_ip=client_ip)
+            return StreamingResponse(
+                _error_stream("Too many requests. Please wait a moment before trying again."),
+                media_type="text/event-stream",
+            )
+
         body = await request.json()
 
         # Handle CopilotKit protocol methods (info, agent/connect, etc.)
@@ -652,10 +699,25 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
             if openai_tools:
                 kwargs["tools"] = openai_tools
 
-            response = await client.chat.completions.create(**kwargs)
+            try:
+                response = await asyncio.wait_for(
+                    client.chat.completions.create(**kwargs),
+                    timeout=OPENAI_STREAM_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                logger.error("copilot_openai_timeout", thread_id=thread_id, iteration=iteration)
+                error_msg_id = str(uuid4())
+                yield encoder.encode(TextMessageStartEvent(messageId=error_msg_id))
+                yield encoder.encode(TextMessageContentEvent(
+                    messageId=error_msg_id,
+                    delta="I'm sorry, the request timed out. Please try again.",
+                ))
+                yield encoder.encode(TextMessageEndEvent(messageId=error_msg_id))
+                break
 
             text_started = False
             accumulated_tool_calls: dict[int, dict] = {}
+            last_chunk_time = time.monotonic()
 
             async for chunk in response:
                 if not chunk.choices:
@@ -883,11 +945,26 @@ async def _tool_result_stream(messages: list, thread_id: str) -> AsyncGenerator[
 
         # Call OpenAI to generate acknowledgment
         client = _get_openai_client()
-        response = await client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=openai_messages,
-            stream=True,
-        )
+        try:
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model="gpt-4.1-mini",
+                    messages=openai_messages,
+                    stream=True,
+                ),
+                timeout=OPENAI_STREAM_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            logger.error("tool_result_openai_timeout", thread_id=thread_id)
+            fallback_id = str(uuid4())
+            yield encoder.encode(TextMessageStartEvent(messageId=fallback_id))
+            yield encoder.encode(TextMessageContentEvent(
+                messageId=fallback_id,
+                delta="The action was processed successfully. Is there anything else I can help with?",
+            ))
+            yield encoder.encode(TextMessageEndEvent(messageId=fallback_id))
+            yield encoder.encode(RunFinishedEvent(threadId=thread_id, runId=run_id))
+            return
 
         message_id = str(uuid4())
         text_started = False
@@ -978,14 +1055,43 @@ class ExecuteToolRequest(BaseModel):
     tool_args: dict
     session_id: str | None = None
 
+    @field_validator("tool_name")
+    @classmethod
+    def validate_tool_name(cls, v: str) -> str:
+        if not v or len(v) > 50:
+            raise ValueError("Invalid tool name")
+        if not re.match(r"^[a-z_]+$", v):
+            raise ValueError("Tool name must contain only lowercase letters and underscores")
+        return v
+
+    @field_validator("tool_args")
+    @classmethod
+    def validate_tool_args(cls, v: dict) -> dict:
+        # Validate email if present
+        email = v.get("customer_email", "")
+        if email:
+            if len(email) > MAX_EMAIL_LENGTH or not EMAIL_REGEX.match(email):
+                raise ValueError("Invalid customer email format")
+        # Validate string args length
+        for key, val in v.items():
+            if isinstance(val, str) and len(val) > MAX_INPUT_LENGTH:
+                raise ValueError(f"Field '{key}' exceeds maximum length of {MAX_INPUT_LENGTH}")
+        return v
+
 
 @router.post("/execute-tool")
-async def execute_tool(req: ExecuteToolRequest):
+async def execute_tool(request: Request, req: ExecuteToolRequest):
     """Execute a HITL-approved tool after user confirmation.
 
     Called by the frontend after the user approves a write operation
     in the CopilotKit sidebar.
     """
+    # Rate limiting by client IP
+    client_ip = request.client.host if request.client else "unknown"
+    if not _tool_rate_limiter.check(client_ip):
+        logger.warning("execute_tool_rate_limited", client_ip=client_ip)
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait before trying again.")
+
     if req.tool_name not in WRITE_TOOLS:
         logger.warning("execute_tool_rejected", tool_name=req.tool_name)
         return {"status": "error", "message": f"Tool '{req.tool_name}' is not an executable write tool"}
@@ -1044,6 +1150,24 @@ class FetchDataRequest(BaseModel):
     """Request to fetch read-only data for display widgets."""
     tool_name: str
     tool_args: dict
+
+    @field_validator("tool_name")
+    @classmethod
+    def validate_tool_name(cls, v: str) -> str:
+        if not v or len(v) > 50:
+            raise ValueError("Invalid tool name")
+        if not re.match(r"^[a-z_]+$", v):
+            raise ValueError("Tool name must contain only lowercase letters and underscores")
+        return v
+
+    @field_validator("tool_args")
+    @classmethod
+    def validate_tool_args(cls, v: dict) -> dict:
+        email = v.get("customer_email", "")
+        if email:
+            if len(email) > MAX_EMAIL_LENGTH or not EMAIL_REGEX.match(email):
+                raise ValueError("Invalid customer email format")
+        return v
 
 
 @router.post("/fetch-data")

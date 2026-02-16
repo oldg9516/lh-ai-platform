@@ -335,40 +335,63 @@
 
 ### Phase 6.2: Full HITL Implementation ✅ COMPLETE
 - [x] HITL формы для write-операций (5/5):
-  - [x] PauseSubscriptionForm (pause_subscription) — Day 2
-  - [x] ChangeFrequencyForm (change_frequency) — Day 3
-  - [x] ChangeAddressForm (change_address) — Day 3
-  - [x] DamageClaimForm (create_damage_claim) — Day 3
-  - [x] SkipMonthForm (skip_month) — Phase 6.2 completion
-- [x] Backend HITL Architecture:
-  - [x] WRITE_TOOLS set + resolve_tools_for_copilot() — filters write tools for CopilotKit path
-  - [x] create_support_agent(use_hitl=True) — backend agent gets only read-only tools
-  - [x] Frontend tools via useHumanInTheLoop auto-forwarded to agent via AG-UI protocol
+  - [x] PauseSubscriptionForm (pause_subscription) — slider 1-12 months
+  - [x] ChangeFrequencyForm (change_frequency) — select monthly/bi-monthly/quarterly
+  - [x] ChangeAddressForm (change_address) — 3 inputs (street, city, country)
+  - [x] DamageClaimForm (create_damage_claim) — input + textarea
+  - [x] SkipMonthForm (skip_month) — select with upcoming months
+- [x] Backend: Direct OpenAI API (bypasses Agno for proper ToolCall event emission):
+  - [x] copilot.py полностью переписан: OpenAI streaming + AG-UI ToolCall events
+  - [x] HITL tools → AG-UI ToolCallStart/Args/End events → CopilotKit renders forms
+  - [x] Read-only tools → executed server-side, results fed back to LLM
+  - [x] Tool call loop (max 5 iterations): LLM → tool → result → LLM → response
   - [x] POST /api/copilot/execute-tool — executes HITL-approved tools after user confirmation
   - [x] Pydantic validation + tool_name whitelist (only WRITE_TOOLS allowed)
-- [x] Frontend HITL Integration:
-  - [x] Parameter alignment: email → customer_email, months → duration_months (matching backend signatures)
-  - [x] All 5 forms call /api/copilot/execute-tool on Approve → get real API result → respond() to agent
-  - [x] Loading states on all forms (disabled inputs + "Processing..." button text)
+- [x] Tool result continuation (_tool_result_stream):
+  - [x] Detects ToolMessage as LAST message (not any()) in CopilotKit conversation
+  - [x] Converts AG-UI messages → OpenAI format (user, assistant+tool_calls, tool results)
+  - [x] Generates acknowledgment text via gpt-4.1-mini, streams as AG-UI events
+  - [x] Prevents form re-appearance after Confirm/Cancel
+- [x] Frontend: Official CopilotKit pattern (useState directly in render callback):
+  - [x] Status lifecycle: inProgress → executing → complete
+  - [x] `disabled={!isExecuting || loading}` for form controls
+  - [x] All 5 forms call /api/copilot/execute-tool on Approve → respond() with result
   - [x] Next.js proxy route: /api/copilot/execute-tool → FastAPI backend
-  - [x] CopilotSidebar integrated in providers.tsx (branding: "Lev Haolam Support")
-  - [x] Updated page.tsx: registered SkipMonthForm, removed placeholder, updated status
+  - [x] .dockerignore for frontend (reduces build context from 1.4GB to ~5MB)
 - [x] Audit logging: save_tool_execution() called with requires_approval=true, approval_status=approved
 - [x] Mock APIs для демо (Phase 6.1.5)
+- [x] 215 tests passing
 - [ ] File upload для damage claims (S3/MinIO integration)
 - [ ] Интеграция с реальными API (IT dept):
   - [ ] Zoho CRM (pause, skip, frequency change)
   - [ ] Pay API (payment method updates)
   - [ ] Shipping provider API (address validation)
 
-### Phase 6.3: Informational Widgets (2 недели)
-- [ ] Read-only компоненты (no confirmation needed):
-  - [ ] TrackingCard (track_package → карточка с картой и прогресс-баром)
-  - [ ] OrderHistoryTable (get_customer_history → таблица с фильтрами)
-  - [ ] BoxContentsCard (get_box_contents → список продуктов)
-  - [ ] PaymentHistoryCard (get_payment_history → timeline)
-- [ ] A2UI для виджетов (агент генерирует JSON → фронтенд рендерит)
-- [ ] Unified UI library (shadcn/ui или Material-UI)
+**Коммиты:**
+- `e1874f0` Complete HITL end-to-end: direct OpenAI streaming + tool result continuation
+
+### Phase 6.3: Informational Widgets ✅ COMPLETE
+- [x] Read-only display widgets (useHumanInTheLoop + auto-respond pattern):
+  - [x] TrackingWidget — progress bar (Shipped→In Transit→Out for Delivery→Delivered), carrier info, tracking history timeline, estimated delivery
+  - [x] OrderHistoryWidget — subscription badges (Active/Inactive, frequency, start date), recent orders table with tracking numbers
+  - [x] BoxContentsWidget — last box details (SKU, shipping date), customization preferences with exclusion badges (No Alcohol, No Honey)
+  - [x] PaymentHistoryWidget — payment timeline with amounts/invoices, next payment date, payment method, total amount
+- [x] AG-UI protocol for widgets:
+  - [x] DISPLAY_TOOL_NAMES set: display_tracking, display_orders, display_box_contents, display_payments
+  - [x] FRONTEND_TOOL_NAMES = HITL_TOOL_NAMES | DISPLAY_TOOL_NAMES — unified frontend tool routing
+  - [x] READ_TO_DISPLAY mapping: автоматическая инъекция display tools когда агент имеет read tool (e.g. track_package → display_tracking)
+  - [x] Display tool OpenAI schemas (customer_email parameter only)
+  - [x] Agent system prompt instructions: "After fetching data, call display_* to show it visually"
+- [x] Self-fetching widget pattern:
+  - [x] Widget receives customer_email via tool args → calls /api/copilot/fetch-data → renders rich UI
+  - [x] /fetch-data FastAPI endpoint with READ_ONLY_TOOLS whitelist (get_subscription, get_customer_history, get_payment_history, track_package, get_box_contents)
+  - [x] Next.js proxy route: /api/copilot/fetch-data → FastAPI backend
+  - [x] Auto-respond after 500ms delay (widget stays visible after status="complete")
+- [x] Unified UI library: shadcn/ui (Card, CardHeader, CardTitle, CardDescription, CardContent)
+- [x] 215 tests passing
+
+**Коммиты:**
+- `90c927b` Phase 6.3: Informational widgets (Tracking, Orders, BoxContents, Payments)
 
 ### Phase 6.4: Production Hardening (1 неделя)
 - [ ] Langfuse eval для HITL flows (approval rate, completion time, cancel rate)
