@@ -5,10 +5,12 @@ of AI responses, classifies them by type, and stores them for few-shot
 injection and instruction improvement suggestions.
 """
 
-from pydantic import BaseModel
+from datetime import datetime, timedelta, timezone
 
+from pydantic import BaseModel
 import structlog
 
+from config import settings
 from database.connection import get_client
 
 logger = structlog.get_logger()
@@ -57,6 +59,13 @@ def save_correction(record: CorrectionRecord) -> None:
             category=record.category,
             correction_type=record.correction_type,
         )
+        # Check if pattern threshold reached (Phase 9.2)
+        if _check_pattern_threshold(record.category, record.correction_type):
+            logger.info(
+                "pattern_threshold_reached",
+                category=record.category,
+                correction_type=record.correction_type,
+            )
     except Exception as e:
         logger.error("correction_save_failed", error=str(e))
 
@@ -146,3 +155,34 @@ async def classify_correction(
             specific_issue=f"Classification error: {str(e)}",
             key_changes=[],
         )
+
+
+def _check_pattern_threshold(category: str, correction_type: str) -> bool:
+    """Check if corrections for a category+type exceed the pattern threshold.
+
+    Args:
+        category: The support category.
+        correction_type: The correction type (tone/accuracy/safety/completeness).
+
+    Returns:
+        True if count >= pattern_min_frequency within the lookback window.
+    """
+    try:
+        cutoff = (
+            datetime.now(timezone.utc)
+            - timedelta(days=settings.pattern_window_days)
+        ).isoformat()
+        result = (
+            get_client()
+            .table("correction_patterns")
+            .select("id", count="exact")
+            .eq("category", category)
+            .eq("correction_type", correction_type)
+            .gte("created_at", cutoff)
+            .execute()
+        )
+        count = result.count if result.count is not None else 0
+        return count >= settings.pattern_min_frequency
+    except Exception as e:
+        logger.error("check_pattern_threshold_failed", error=str(e))
+        return False

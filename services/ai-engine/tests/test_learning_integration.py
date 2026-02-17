@@ -234,3 +234,95 @@ class TestQueryHelpers:
         from database.queries import get_session_category
 
         assert callable(get_session_category)
+
+    def test_instruction_update_queries_importable(self):
+        from database.queries import (
+            get_instruction_updates,
+            get_instruction_update,
+            save_instruction_update,
+            update_instruction_status,
+            get_deployed_updates,
+        )
+
+        assert callable(get_instruction_updates)
+        assert callable(get_instruction_update)
+        assert callable(save_instruction_update)
+        assert callable(update_instruction_status)
+        assert callable(get_deployed_updates)
+
+
+# --- Deployed Updates in Instructions (Phase 9.2) ---
+
+
+class TestDeployedInstructionUpdates:
+    """Verify deployed instruction updates are loaded into agent instructions."""
+
+    @patch("agents.instructions.get_deployed_updates")
+    def test_deployed_updates_appended(self, mock_deployed):
+        mock_deployed.return_value = [
+            {"suggested_fix": "Always mention the tracking link when discussing shipping delays."},
+            {"suggested_fix": "Use empathetic language when the customer is frustrated."},
+        ]
+
+        from agents.instructions import load_instructions
+
+        instructions = load_instructions("shipping_or_delivery_question")
+        text = "\n".join(instructions)
+
+        assert "DEPLOYED INSTRUCTION IMPROVEMENTS" in text
+        assert "tracking link" in text
+        assert "empathetic language" in text
+
+    @patch("agents.instructions.get_deployed_updates")
+    def test_no_deployed_updates(self, mock_deployed):
+        mock_deployed.return_value = []
+
+        from agents.instructions import load_instructions
+
+        instructions = load_instructions("shipping_or_delivery_question")
+        text = "\n".join(instructions)
+
+        assert "DEPLOYED INSTRUCTION IMPROVEMENTS" not in text
+
+    @patch("agents.instructions.get_deployed_updates")
+    def test_deployed_updates_error_handled(self, mock_deployed):
+        mock_deployed.side_effect = Exception("DB error")
+
+        from agents.instructions import load_instructions
+
+        # Should not crash — graceful fallback
+        instructions = load_instructions("shipping_or_delivery_question")
+        assert len(instructions) > 0
+        text = "\n".join(instructions)
+        assert "DEPLOYED INSTRUCTION IMPROVEMENTS" not in text
+
+
+# --- Pattern Detection Config (Phase 9.2) ---
+
+
+class TestPatternDetectionConfig:
+    """Verify pattern detection config fields exist."""
+
+    def test_pattern_config_defaults(self):
+        from config import Settings
+
+        s = Settings(
+            openai_api_key="test",
+            supabase_url="http://test",
+            supabase_service_role_key="test",
+        )
+        assert s.pattern_min_frequency == 3
+        assert s.pattern_window_days == 7
+
+    def test_pattern_config_custom(self):
+        from config import Settings
+
+        s = Settings(
+            openai_api_key="test",
+            supabase_url="http://test",
+            supabase_service_role_key="test",
+            pattern_min_frequency=5,
+            pattern_window_days=14,
+        )
+        assert s.pattern_min_frequency == 5
+        assert s.pattern_window_days == 14

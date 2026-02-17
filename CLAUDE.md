@@ -8,7 +8,7 @@ AI-powered live chat platform for Lev Haolam customer support. Replaces email-on
 
 **Stack:** Agno AgentOS (Python 3.12) + CopilotKit/AG-UI (Next.js 16) + Chatwoot (Omnichannel) + Langfuse (Observability & Eval) + PostgreSQL (Supabase) + Pinecone + Docker Compose
 
-**Current Status:** Phase 6 complete (Generative UI + HITL forms via CopilotKit). Phase 7 Days 4-7 complete (rich context, sentiment, analytics, demo materials). Phase 8: Dash analytics agent replaces custom analytics service. 19 containers, full pipeline working end-to-end via Chatwoot widget, email, CopilotKit chat, and Dash analytics. See `PROGRESS.md` for phase tracking.
+**Current Status:** Phase 9.1 complete (dual-track learning: customer memory via Agno LM + correction pipeline). Phase 8 complete (specialist agents + QA agent with retry loop + Dash analytics agent). 19 containers, full pipeline working end-to-end via Chatwoot widget, email, CopilotKit chat, and Dash analytics. See `PROGRESS.md` for phase tracking.
 
 ## Commands
 
@@ -134,7 +134,7 @@ Injected into CopilotKit pipeline as context prepended to agent input.
 
 ### Support Agent Factory
 
-Single factory function (`create_support_agent(category)` in `agents/support.py`) dynamically configures model, reasoning effort, tools, Pinecone namespace, and instructions based on `CATEGORY_CONFIG` (defined in `agents/config.py`).
+Async factory function (`async create_support_agent(category, customer_email)` in `agents/support.py`) dynamically configures model, reasoning effort, tools, Pinecone namespace, instructions, and optional Learning Machine based on `CATEGORY_CONFIG` (defined in `agents/config.py`).
 
 **10 categories:** shipping_or_delivery_question, payment_question, frequency_change_request, skip_or_pause_request, recipient_or_address_change, customization_request, damaged_or_leaking_item_report, gratitude, retention_primary_request, retention_repeated_request
 
@@ -148,9 +148,16 @@ Next.js 16 + CopilotKit + AG-UI protocol.
 
 **Package manager:** pnpm (not npm/yarn).
 
-**Structure:**
-- `app/page.tsx` — CopilotSidebar with "Lev Haolam Support" branding
+**Structure (route groups):**
+- `app/layout.tsx` — Root layout (Toaster, fonts, metadata)
+- `app/(support)/layout.tsx` — Support chat layout (CopilotKit + QueryClientProvider)
+- `app/(support)/page.tsx` — CopilotSidebar with HITL forms + display widgets
+- `app/(dash)/layout.tsx` — Dash analytics layout (CopilotKit with `agent="dash"`)
+- `app/(dash)/dash/page.tsx` — Dash analytics chat with quick prompts
 - `app/api/copilot/` — Next.js proxy routes to FastAPI backend
+- `app/api/dash/` — Next.js proxy routes to Dash service
+- `lib/providers.tsx` — Support chat provider (CopilotKit + React Query)
+- `lib/dash-providers.tsx` — Dash analytics provider
 - `components/forms/` — 5 HITL confirmation forms (PauseSubscription, ChangeFrequency, ChangeAddress, DamageClaim, SkipMonth)
 - `components/widgets/` — 4 display widgets (Tracking, OrderHistory, BoxContents, PaymentHistory)
 - `components/ui/` — shadcn/ui components
@@ -202,6 +209,7 @@ Both the existing n8n email pipeline and the new Agno chat platform:
 The new system adds tables:
 - **Chat platform:** `chat_sessions`, `chat_messages`, `agent_traces`, `tool_executions`, `learning_records`
 - **Customer data:** `customers`, `subscriptions`, `orders`, `tracking_events` — normalized relational model
+- **Learning (Phase 9.1):** `correction_patterns` (human edits of AI responses), `instruction_updates` (suggested prompt improvements)
 - **Legacy (n8n only):** `support_threads_data`, `support_dialogs` — read-only
 
 **Customer Identification:** `database/customer_queries.py` provides 8 query functions. Tools use these to fetch real customer data (962 customers, 649 subscriptions, 1826 orders, 268 tracking events imported from production).
@@ -261,6 +269,47 @@ Self-learning data agent based on [agno-agi/dash](https://github.com/agno-agi/da
 3. **Truncation:** Agent responses truncated to 500 chars
 4. **Injection:** Prepended to agent_input with `[Conversation History]` / `[End History]` markers
 
+### Specialist Agents + QA Agent (Phase 8)
+
+**Feature flag:** `TEAM_MODE_ENABLED=false` (disabled by default). When enabled, replaces single-category agents with domain specialists + QA retry loop.
+
+**4 specialists** in `agents/specialists.py`:
+- **Billing** — payment, frequency, skip/pause (GPT-5.1, 5 tools)
+- **Shipping** — delivery, address changes (GPT-5.1, 4 tools)
+- **Retention** — cancellation requests (GPT-5.1 + reasoning=medium, 5 tools)
+- **Quality** — damage reports, customization, gratitude (GPT-5.1, 4 tools)
+
+**QA Agent** (`agents/qa_agent.py`): Replaces eval gate LLM tier in team mode. Adds `"refine"` decision — sends feedback to specialist for retry (max 1 retry, then send/draft/escalate).
+
+**Orchestrator** (`agents/orchestrator.py`): 7-stage pipeline (safety → classify → context → agent → post-process → evaluate → persist). Team mode branches at stages 4 and 6.
+
+### Dual-Track Learning System (Phase 9.1)
+
+**Track 1 — Agno Learning Machine (Customer Memory):**
+- Agent remembers customer preferences between sessions via `LearningMachine(user_memory=UserMemoryConfig(mode=LearningMode.ALWAYS))`
+- `user_id=customer_email` binds memory to customer
+- Requires `LEARNING_ENABLED=true` + `LEARNING_DB_URL` (direct PostgreSQL, not Supabase REST)
+- Both `create_support_agent()` and `create_specialist_agent()` are **async** due to LM
+
+**Track 2 — Correction Learning Pipeline:**
+- `learning/feedback.py` — captures human edits of AI responses from Chatwoot `message_updated` events
+- `learning/few_shot.py` — `build_few_shot_instructions()` injects recent corrections as few-shot examples into agent instructions
+- LLM classifier (GPT-5-mini) categorizes corrections: tone/accuracy/safety/completeness
+- Requires `LEARNING_FEW_SHOT_ENABLED=true`
+
+**New DB tables:** `correction_patterns`, `instruction_updates`
+
+### Feature Flags
+
+All flags default to OFF for full backward compatibility.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `TEAM_MODE_ENABLED` | false | Specialist agents + QA retry loop (Phase 8) |
+| `LEARNING_ENABLED` | false | Agno Learning Machine — customer memory between sessions |
+| `LEARNING_FEW_SHOT_ENABLED` | false | Few-shot correction injection into agent instructions |
+| `USE_MOCK_APIS` | true | Mock external APIs for development/demo |
+
 ## Critical Safety Rules (NEVER VIOLATE)
 
 1. **AI NEVER confirms subscription cancellation** — always redirect to self-service cancel page
@@ -298,6 +347,8 @@ from guardrails.safety import check_red_lines
 from tools import resolve_tools, TOOL_REGISTRY, WRITE_TOOLS
 from mock_apis.factory import APIFactory
 from chatwoot.client import ChatwootClient
+from learning.feedback import save_correction, classify_correction
+from learning.few_shot import build_few_shot_instructions
 ```
 
 ### Action Tools
@@ -374,8 +425,12 @@ CANCEL_LINK_PASSWORD
 CHATWOOT_URL, CHATWOOT_API_TOKEN, CHATWOOT_ACCOUNT_ID, CHATWOOT_SECRET_KEY_BASE
 CHATWOOT_DB_PASSWORD, CHATWOOT_REDIS_PASSWORD, CHATWOOT_FRONTEND_URL
 DASH_DB_PASSWORD (Dash PgVector DB), AGNO_API_KEY (optional, Control Plane)
+LEARNING_ENABLED=false, LEARNING_FEW_SHOT_ENABLED=false
+LEARNING_DB_URL (auto-set in docker-compose: postgresql+psycopg://postgres:...@supabase-db:5432/postgres)
+TEAM_MODE_ENABLED=false
 USE_MOCK_APIS=true (default, set false for real external APIs)
 NEXT_PUBLIC_API_URL=http://ai-engine:8000 (Docker only, dev auto-proxies to localhost:8000)
+DASH_API_URL=http://dash:9000 (Docker only, frontend env for Dash proxy)
 ```
 
 ## Reference Documents

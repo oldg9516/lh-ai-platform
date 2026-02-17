@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     learning_enabled: bool = False  # Enable Agno Learning Machine (customer memory)
     learning_few_shot_enabled: bool = False  # Enable few-shot correction injection
 
+    # Pattern detection thresholds (Phase 9.2: eval-driven instruction updates)
+    pattern_min_frequency: int = 3  # Min corrections to trigger suggestion
+    pattern_window_days: int = 7  # Lookback window in days
+
     # Mock APIs (for demo/development)
     use_mock_apis: bool = True  # Switch between mock and real external APIs
 

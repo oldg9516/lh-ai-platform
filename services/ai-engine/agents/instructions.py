@@ -11,7 +11,7 @@ Merges global + category-specific instructions matching n8n logic:
 
 import structlog
 
-from database.queries import get_instructions, get_global_rules
+from database.queries import get_instructions, get_global_rules, get_deployed_updates
 
 logger = structlog.get_logger()
 
@@ -108,6 +108,19 @@ def load_instructions(category: str) -> list[str]:
         outstanding_hard = _get_field(specific_row, "outstanding_hard_rules")
         if outstanding_hard:
             instructions.append(f"HARD RULES (NEVER VIOLATE): {outstanding_hard}")
+
+        # Deployed instruction updates (Phase 9.2: eval-driven fixes)
+        try:
+            deployed = get_deployed_updates(category)
+            if deployed:
+                fixes = [upd["suggested_fix"] for upd in deployed if upd.get("suggested_fix")]
+                if fixes:
+                    updates_block = "DEPLOYED INSTRUCTION IMPROVEMENTS:\n" + "\n".join(
+                        f"- {fix}" for fix in fixes
+                    )
+                    instructions.append(updates_block)
+        except Exception as deploy_err:
+            logger.warning("deployed_updates_load_failed", category=category, error=str(deploy_err))
 
     except Exception as e:
         logger.error("failed_to_load_instructions", category=category, error=str(e))

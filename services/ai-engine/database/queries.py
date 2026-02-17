@@ -233,3 +233,131 @@ def save_tool_execution(data: dict[str, Any]) -> None:
         "error_message": data.get("error_message"),
     }
     get_client().table("tool_executions").insert(row).execute()
+
+
+# --- Instruction Updates (Phase 9.2) ---
+
+
+def get_instruction_updates(
+    status: str | None = None,
+    category: str | None = None,
+) -> list[dict]:
+    """List instruction updates with optional filters.
+
+    Args:
+        status: Filter by status (pending, approved, rejected, deployed).
+        category: Filter by category name.
+
+    Returns:
+        List of instruction_update dicts, newest first.
+    """
+    try:
+        query = get_client().table("instruction_updates").select("*")
+        if status:
+            query = query.eq("status", status)
+        if category:
+            query = query.eq("category", category)
+        result = query.order("created_at", desc=True).execute()
+        return result.data or []
+    except Exception as e:
+        logger.error("get_instruction_updates_failed", error=str(e))
+        return []
+
+
+def get_instruction_update(update_id: str) -> dict | None:
+    """Get a single instruction update by ID.
+
+    Args:
+        update_id: UUID of the instruction update.
+
+    Returns:
+        Dict with update fields, or None.
+    """
+    try:
+        result = (
+            get_client()
+            .table("instruction_updates")
+            .select("*")
+            .eq("id", update_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error("get_instruction_update_failed", update_id=update_id, error=str(e))
+        return None
+
+
+def save_instruction_update(data: dict[str, Any]) -> str:
+    """Insert a new instruction update suggestion.
+
+    Args:
+        data: Fields matching instruction_updates table schema.
+
+    Returns:
+        The UUID id of the created record.
+    """
+    row = {
+        "category": data["category"],
+        "issue_pattern": data["issue_pattern"],
+        "suggested_fix": data["suggested_fix"],
+        "supporting_examples": data.get("supporting_examples", []),
+        "frequency": data.get("frequency", 1),
+        "status": "pending",
+    }
+    result = get_client().table("instruction_updates").insert(row).execute()
+    return result.data[0]["id"]
+
+
+def update_instruction_status(update_id: str, status: str) -> dict | None:
+    """Update the status of an instruction update.
+
+    Args:
+        update_id: UUID of the instruction update.
+        status: New status (approved, rejected, deployed).
+
+    Returns:
+        Updated record dict, or None on error.
+    """
+    try:
+        result = (
+            get_client()
+            .table("instruction_updates")
+            .update({"status": status, "reviewed_at": "now()"})
+            .eq("id", update_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(
+            "update_instruction_status_failed",
+            update_id=update_id,
+            status=status,
+            error=str(e),
+        )
+        return None
+
+
+def get_deployed_updates(category: str) -> list[dict]:
+    """Get all deployed instruction updates for a category.
+
+    Args:
+        category: The support category.
+
+    Returns:
+        List of deployed update dicts, oldest first (chronological accumulation).
+    """
+    try:
+        result = (
+            get_client()
+            .table("instruction_updates")
+            .select("*")
+            .eq("status", "deployed")
+            .eq("category", category)
+            .order("created_at")
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        logger.error("get_deployed_updates_failed", category=category, error=str(e))
+        return []
