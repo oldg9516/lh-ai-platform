@@ -1,42 +1,24 @@
 """FastAPI routes for the AI Engine.
 
-POST /api/chat            — main pipeline: safety → classify+name → support+outstanding
-                            → cancel link → assemble → eval gate → save → respond.
+POST /api/chat            — delegates to SupportOrchestrator 7-stage pipeline.
 POST /api/webhook/chatwoot — Chatwoot webhook bridge: parse → chat() → dispatch back.
 GET  /api/health           — service health check.
 """
 
-import asyncio
 import re
 import time
-import uuid
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 import structlog
 
 from config import settings
-from agents.config import CATEGORY_CONFIG
-from agents.router import classify_message
-from agents.name_extractor import extract_customer_name
-from agents.support import create_support_agent
-from agents.response_assembler import assemble_response
-from agents.outstanding import detect_outstanding
-from agents.eval_gate import evaluate_response
-from guardrails.safety import check_red_lines
-from tools.retention import generate_cancel_link, inject_cancel_link
+from agents.orchestrator import SupportOrchestrator
 from chatwoot.client import (
     send_message,
     toggle_conversation_status,
     add_labels,
     assign_conversation,
-)
-from database.queries import (
-    get_conversation_history,
-    save_session,
-    save_message,
-    save_eval_result,
-    update_session_outstanding,
 )
 
 logger = structlog.get_logger()
@@ -106,205 +88,32 @@ async def health_check():
 async def chat(request: ChatRequest):
     """Process a customer message through the AI pipeline.
 
-    Pipeline: red line → classify+name (parallel) → support+outstanding (parallel)
-              → cancel link → assemble → eval gate → save → respond.
+    Delegates to SupportOrchestrator which runs the 7-stage pipeline:
+    safety → classify+name → context → agent+outstanding → post-process → eval → persist.
     """
-    start_time = time.time()
-    session_id = request.session_id or f"sess_{uuid.uuid4().hex[:12]}"
-
-    logger.info("chat_request_received", session_id=session_id)
-
-    # Step 1: Red line safety check
-    red_line_check = check_red_lines(request.message)
-    if red_line_check["is_flagged"]:
-        logger.warning(
-            "red_line_triggered",
-            session_id=session_id,
-            trigger=red_line_check["trigger"],
-        )
-        return ChatResponse(
-            response="I'm connecting you with a support agent who can better assist you.",
-            session_id=session_id,
-            category="unknown",
-            decision="escalate",
-            confidence="high",
-            metadata={
-                "escalation_reason": red_line_check["trigger"],
-                "processing_time_ms": int((time.time() - start_time) * 1000),
-            },
-        )
-
-    # Step 2: Classify message + extract customer name (parallel)
+    contact_email = request.contact.email if request.contact else None
     contact_name = request.contact.name if request.contact else None
-    classification, customer_name = await asyncio.gather(
-        classify_message(request.message),
-        extract_customer_name(request.message, contact_name),
+    channel = (request.metadata or {}).get("channel", "widget")
+
+    result = await SupportOrchestrator.process(
+        message=request.message,
+        session_id=request.session_id,
+        conversation_id=request.conversation_id,
+        contact_email=contact_email,
+        contact_name=contact_name,
+        channel=channel,
+        metadata=request.metadata,
     )
-
-    # Step 3: Support Agent + Outstanding Detection (parallel)
-    customer_email = request.contact.email if request.contact else classification.email
-    agent_input_parts = [f"[Customer Name: {customer_name}]"]
-    if customer_email:
-        agent_input_parts.append(f"[Customer Email: {customer_email}]")
-
-    # Load conversation history for multi-turn context
-    history = get_conversation_history(session_id)
-    if history:
-        agent_input_parts.append("")
-        agent_input_parts.append("[Conversation History]")
-        for msg in history:
-            role = "Customer" if msg["role"] == "user" else "Agent"
-            content = msg["content"]
-            if role == "Agent" and len(content) > 500:
-                content = content[:500] + "..."
-            agent_input_parts.append(f"{role}: {content}")
-        agent_input_parts.append("[End History]")
-
-    agent_input_parts.append("")
-    agent_input_parts.append(request.message)
-    agent_input = "\n".join(agent_input_parts)
-
-    async def _run_support_agent() -> str:
-        agent = create_support_agent(classification.primary)
-        response = await agent.arun(agent_input)
-        return str(response.content)
-
-    try:
-        ai_response, outstanding_result = await asyncio.gather(
-            _run_support_agent(),
-            detect_outstanding(request.message, classification.primary),
-        )
-    except Exception as e:
-        logger.error("support_agent_error", error=str(e), category=classification.primary)
-        return ChatResponse(
-            response=(
-                "I apologize, but I'm having trouble processing your request. "
-                "Let me connect you with a support agent."
-            ),
-            session_id=session_id,
-            category=classification.primary,
-            decision="escalate",
-            confidence="low",
-            metadata={"error": str(e)},
-        )
-
-    # Step 4: Cancel link injection (retention categories only)
-    is_retention = classification.primary in (
-        "retention_primary_request",
-        "retention_repeated_request",
-    )
-    if is_retention:
-        customer_email = (
-            request.contact.email if request.contact else classification.email
-        )
-        if customer_email:
-            cancel_url = generate_cancel_link(
-                subscription_id="pending",
-                customer_email=customer_email,
-            )
-            if cancel_url:
-                ai_response = inject_cancel_link(ai_response, cancel_url)
-
-    # Step 5: Assemble response (greeting + opener + body + closer + sign-off)
-    ai_response = assemble_response(
-        raw_response=ai_response,
-        customer_name=customer_name,
-        category=classification.primary,
-        session_id=session_id,
-    )
-
-    # Step 6: Eval Gate (replaces check_subscription_safety)
-    config = CATEGORY_CONFIG[classification.primary]
-    eval_result = await evaluate_response(
-        customer_message=request.message,
-        ai_response=ai_response,
-        category=classification.primary,
-        is_outstanding=outstanding_result.is_outstanding,
-        tools_available=config.tools or None,
-    )
-
-    decision = eval_result.decision
-    confidence = eval_result.confidence
-
-    if decision != "send":
-        logger.warning(
-            "eval_gate_not_send",
-            session_id=session_id,
-            decision=decision,
-            confidence=confidence,
-            override_reason=eval_result.override_reason,
-        )
-
-    processing_time_ms = int((time.time() - start_time) * 1000)
-
-    # Step 7: Save to database (best effort)
-    try:
-        save_session({
-            "session_id": session_id,
-            "conversation_id": request.conversation_id,
-            "channel": (request.metadata or {}).get("channel", "widget"),
-            "customer_email": request.contact.email if request.contact else classification.email,
-            "customer_name": customer_name,
-            "primary_category": classification.primary,
-            "secondary_category": classification.secondary,
-            "urgency": classification.urgency,
-            "status": "active",
-            "eval_decision": decision,
-            "first_response_time_ms": processing_time_ms,
-        })
-        update_session_outstanding(
-            session_id=session_id,
-            is_outstanding=outstanding_result.is_outstanding,
-            outstanding_trigger=outstanding_result.trigger,
-            eval_decision=decision,
-        )
-        save_message({
-            "session_id": session_id,
-            "role": "user",
-            "content": request.message,
-            "model_used": None,
-            "reasoning_effort": None,
-            "processing_time_ms": None,
-        })
-        save_message({
-            "session_id": session_id,
-            "role": "assistant",
-            "content": ai_response,
-            "model_used": config.model,
-            "reasoning_effort": config.reasoning_effort,
-            "processing_time_ms": processing_time_ms,
-        })
-        save_eval_result({
-            "ticket_id": session_id,
-            "request_subtype": classification.primary,
-            "request_sub_subtype": classification.secondary,
-            "decision": decision,
-            "draft_reason": eval_result.override_reason,
-            "confidence": confidence,
-            "checks": [c.model_dump() for c in eval_result.checks],
-            "is_outstanding": outstanding_result.is_outstanding,
-            "outstanding_trigger": outstanding_result.trigger,
-            "auto_send_enabled": config.auto_send_phase <= 1,
-        })
-    except Exception as e:
-        logger.error("database_save_error", session_id=session_id, error=str(e))
 
     return ChatResponse(
-        response=ai_response,
-        session_id=session_id,
-        category=classification.primary,
-        decision=decision,
-        confidence=confidence,
-        metadata={
-            "model_used": config.model,
-            "reasoning_effort": config.reasoning_effort,
-            "processing_time_ms": processing_time_ms,
-            "is_outstanding": outstanding_result.is_outstanding,
-            "outstanding_trigger": outstanding_result.trigger,
-            "secondary_category": classification.secondary,
-            "customer_name": customer_name,
-            "eval_checks": [c.model_dump() for c in eval_result.checks],
-        },
+        response=result.response,
+        session_id=result.session_id,
+        category=result.category,
+        decision=result.decision,
+        confidence=result.confidence,
+        actions_taken=result.actions_taken,
+        actions_pending=result.actions_pending,
+        metadata=result.metadata,
     )
 
 
