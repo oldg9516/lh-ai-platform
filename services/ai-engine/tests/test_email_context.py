@@ -14,9 +14,10 @@ from agents.router import RouterOutput
 class TestEmailContext:
     """Test customer email extraction and context injection."""
 
-    def test_create_support_agent_with_email(self):
+    @pytest.mark.asyncio
+    async def test_create_support_agent_with_email(self):
         """Agent instructions should include customer email when provided."""
-        agent = create_support_agent("shipping_or_delivery_question", customer_email="test@example.com")
+        agent = await create_support_agent("shipping_or_delivery_question", customer_email="test@example.com")
 
         # Verify agent was created
         assert agent is not None
@@ -27,9 +28,10 @@ class TestEmailContext:
         assert "test@example.com" in instructions_str
         assert "IMPORTANT: Customer email for this conversation" in instructions_str
 
-    def test_create_support_agent_without_email(self):
+    @pytest.mark.asyncio
+    async def test_create_support_agent_without_email(self):
         """Agent should work fine without customer email."""
-        agent = create_support_agent("gratitude", customer_email=None)
+        agent = await create_support_agent("gratitude", customer_email=None)
 
         assert agent is not None
         assert agent.name == "Support Agent (gratitude)"
@@ -55,14 +57,15 @@ class TestEmailContext:
         if result.email:
             assert "@" in result.email
 
-    def test_email_context_integration(self):
+    @pytest.mark.asyncio
+    async def test_email_context_integration(self):
         """Integration test: verify email flows through the system."""
         # Test 1: Router extracts email
         # Test 2: create_support_agent accepts email
         # Test 3: Agent instructions include email
 
         email = "integration@example.com"
-        agent = create_support_agent("shipping_or_delivery_question", customer_email=email)
+        agent = await create_support_agent("shipping_or_delivery_question", customer_email=email)
 
         # Verify email context is in instructions
         instructions_str = " ".join(agent.instructions)

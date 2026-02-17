@@ -13,6 +13,7 @@ from agno.models.anthropic import Claude
 
 from agents.config import CATEGORY_CONFIG, CategoryConfig
 from agents.instructions import load_instructions
+from config import settings
 from knowledge.pinecone_client import create_knowledge
 from tools import resolve_tools, resolve_tools_for_copilot
 
@@ -39,7 +40,7 @@ def _resolve_model(config: CategoryConfig):
         raise ValueError(f"Unknown model_provider: {config.model_provider}")
 
 
-def create_support_agent(
+async def create_support_agent(
     category: str,
     customer_email: str | None = None,
     use_hitl: bool = False,
@@ -47,7 +48,9 @@ def create_support_agent(
     """Create a dynamically-configured Support Agent for a category.
 
     The agent gets model, instructions, knowledge, and tools
-    all driven by CATEGORY_CONFIG.
+    all driven by CATEGORY_CONFIG. When learning is enabled,
+    adds Agno Learning Machine for customer memory and few-shot
+    corrections from human edits.
 
     Args:
         category: One of the 10 valid category strings.
@@ -69,6 +72,17 @@ def create_support_agent(
 
     # Load instructions from database
     instructions = load_instructions(category)
+
+    # Inject few-shot corrections from human edits (Track 2: quality improvement)
+    if settings.learning_few_shot_enabled:
+        try:
+            from learning.few_shot import build_few_shot_instructions
+
+            few_shot = await build_few_shot_instructions(category)
+            if few_shot:
+                instructions.append(few_shot)
+        except Exception as e:
+            logger.warning("few_shot_injection_failed", category=category, error=str(e))
 
     # Add customer email context if provided
     if customer_email:
@@ -127,6 +141,21 @@ def create_support_agent(
         if resolved:
             agent_kwargs["tools"] = resolved
 
+    # Track 1: Agno Learning Machine (customer memory/personalization)
+    if settings.learning_enabled and customer_email and settings.learning_db_url:
+        try:
+            from agno.db.postgres import PostgresDb
+            from agno.learn import LearningMachine, LearningMode, UserMemoryConfig
+
+            db = PostgresDb(db_url=settings.learning_db_url)
+            agent_kwargs["db"] = db
+            agent_kwargs["user_id"] = customer_email
+            agent_kwargs["learning"] = LearningMachine(
+                user_memory=UserMemoryConfig(mode=LearningMode.ALWAYS),
+            )
+        except Exception as e:
+            logger.warning("learning_machine_init_failed", error=str(e))
+
     agent = Agent(**agent_kwargs)
 
     logger.info(
@@ -136,6 +165,7 @@ def create_support_agent(
         model_provider=config.model_provider,
         has_knowledge=knowledge is not None,
         tools_count=len(agent_kwargs.get("tools", [])),
+        learning_enabled="learning" in agent_kwargs,
     )
 
     return agent

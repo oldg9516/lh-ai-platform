@@ -286,9 +286,15 @@ class SupportOrchestrator:
         """
         async def _support():
             if ctx.use_team_mode:
-                agent = create_specialist_agent(ctx.classification.primary)
+                agent = await create_specialist_agent(
+                    ctx.classification.primary,
+                    customer_email=ctx.customer_email,
+                )
             else:
-                agent = create_support_agent(ctx.classification.primary)
+                agent = await create_support_agent(
+                    ctx.classification.primary,
+                    customer_email=ctx.customer_email,
+                )
             response = await agent.arun(ctx.agent_input)
             return str(response.content)
 

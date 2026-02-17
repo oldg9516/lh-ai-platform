@@ -93,10 +93,12 @@ class TestWebhookFiltering:
         assert resp.json()["status"] == "error"
         assert resp.json()["reason"] == "no conversation_id"
 
-    def test_ignores_message_updated(self):
+    def test_processes_message_updated(self):
+        """message_updated events are processed for correction learning."""
         payload = {"event": "message_updated", "content": "edited"}
         resp = client.post("/api/webhook/chatwoot", json=payload)
-        assert resp.json()["status"] == "ignored"
+        assert resp.json()["status"] == "processed"
+        assert resp.json()["event"] == "message_updated"
 
     def test_ignores_conversation_status_changed(self):
         payload = {"event": "conversation_status_changed"}

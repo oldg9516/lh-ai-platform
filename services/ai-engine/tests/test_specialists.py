@@ -105,45 +105,54 @@ class TestCategoryToSpecialist:
 class TestCreateSpecialistAgent:
     """Verify specialist agent creation."""
 
-    def test_creates_shipping_specialist(self):
-        agent = create_specialist_agent("shipping_or_delivery_question")
+    @pytest.mark.asyncio
+    async def test_creates_shipping_specialist(self):
+        agent = await create_specialist_agent("shipping_or_delivery_question")
         assert agent.name == "Shipping Specialist"
 
-    def test_creates_billing_specialist(self):
-        agent = create_specialist_agent("payment_question")
+    @pytest.mark.asyncio
+    async def test_creates_billing_specialist(self):
+        agent = await create_specialist_agent("payment_question")
         assert agent.name == "Billing Specialist"
 
-    def test_creates_retention_specialist(self):
-        agent = create_specialist_agent("retention_primary_request")
+    @pytest.mark.asyncio
+    async def test_creates_retention_specialist(self):
+        agent = await create_specialist_agent("retention_primary_request")
         assert agent.name == "Retention Specialist"
 
-    def test_creates_quality_specialist(self):
-        agent = create_specialist_agent("damaged_or_leaking_item_report")
+    @pytest.mark.asyncio
+    async def test_creates_quality_specialist(self):
+        agent = await create_specialist_agent("damaged_or_leaking_item_report")
         assert agent.name == "Quality Specialist"
 
-    def test_unknown_category_raises(self):
+    @pytest.mark.asyncio
+    async def test_unknown_category_raises(self):
         with pytest.raises(ValueError, match="No specialist mapping"):
-            create_specialist_agent("nonexistent_category")
+            await create_specialist_agent("nonexistent_category")
 
-    def test_specialist_has_tools(self):
-        agent = create_specialist_agent("shipping_or_delivery_question")
+    @pytest.mark.asyncio
+    async def test_specialist_has_tools(self):
+        agent = await create_specialist_agent("shipping_or_delivery_question")
         assert agent.tools is not None
         assert len(agent.tools) > 0
 
-    def test_specialist_has_instructions(self):
-        agent = create_specialist_agent("shipping_or_delivery_question")
+    @pytest.mark.asyncio
+    async def test_specialist_has_instructions(self):
+        agent = await create_specialist_agent("shipping_or_delivery_question")
         assert agent.instructions is not None
         assert len(agent.instructions) > 0
 
-    def test_specialist_role_in_instructions(self):
+    @pytest.mark.asyncio
+    async def test_specialist_role_in_instructions(self):
         """Specialist role should be prepended to instructions."""
-        agent = create_specialist_agent("shipping_or_delivery_question")
+        agent = await create_specialist_agent("shipping_or_delivery_question")
         # Role is the first instruction
         first_instruction = agent.instructions[0]
         assert "Shipping Specialist" in first_instruction
 
-    def test_customer_email_added_to_instructions(self):
-        agent = create_specialist_agent(
+    @pytest.mark.asyncio
+    async def test_customer_email_added_to_instructions(self):
+        agent = await create_specialist_agent(
             "shipping_or_delivery_question",
             customer_email="test@example.com",
         )

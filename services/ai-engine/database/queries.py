@@ -166,6 +166,56 @@ def get_conversation_history(session_id: str, limit: int = 10) -> list[dict]:
         return []
 
 
+def get_last_ai_message(session_id: str) -> str | None:
+    """Get the last AI response for a session.
+
+    Args:
+        session_id: The session ID to look up.
+
+    Returns:
+        The content of the last assistant message, or None.
+    """
+    try:
+        result = (
+            get_client()
+            .table("chat_messages")
+            .select("content")
+            .eq("session_id", session_id)
+            .eq("role", "assistant")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0]["content"] if result.data else None
+    except Exception as e:
+        logger.error("get_last_ai_message_failed", session_id=session_id, error=str(e))
+        return None
+
+
+def get_session_category(session_id: str) -> str | None:
+    """Get the primary category for a session.
+
+    Args:
+        session_id: The session ID to look up.
+
+    Returns:
+        The primary_category string, or None.
+    """
+    try:
+        result = (
+            get_client()
+            .table("chat_sessions")
+            .select("primary_category")
+            .eq("session_id", session_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0]["primary_category"] if result.data else None
+    except Exception as e:
+        logger.error("get_session_category_failed", session_id=session_id, error=str(e))
+        return None
+
+
 def save_tool_execution(data: dict[str, Any]) -> None:
     """Insert a tool execution record.
 

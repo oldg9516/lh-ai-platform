@@ -311,3 +311,34 @@ CREATE TABLE learning_records (
 
 CREATE INDEX idx_learning_category ON learning_records(category);
 CREATE INDEX idx_learning_status ON learning_records(status);
+
+-- Human corrections of AI responses (Phase 9: correction learning pipeline)
+CREATE TABLE correction_patterns (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id TEXT,
+    session_id TEXT,
+    category TEXT NOT NULL,
+    ai_response TEXT NOT NULL,
+    human_edit TEXT NOT NULL,
+    correction_type TEXT NOT NULL,  -- tone, accuracy, safety, completeness
+    specific_issue TEXT,
+    key_changes JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_correction_category ON correction_patterns(category, created_at DESC);
+
+-- Instruction update suggestions (Phase 9: eval-driven learning)
+CREATE TABLE instruction_updates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category TEXT NOT NULL,
+    issue_pattern TEXT NOT NULL,
+    suggested_fix TEXT NOT NULL,
+    supporting_examples JSONB DEFAULT '[]',
+    frequency INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'pending',  -- pending, approved, rejected, deployed
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_instruction_updates_status ON instruction_updates(status, category);

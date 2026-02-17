@@ -11,6 +11,10 @@ uvicorn[standard]
 # Database (Supabase REST API)
 supabase
 
+# Database (direct PostgreSQL for Agno Learning Machine)
+sqlalchemy
+psycopg[binary]
+
 # Configuration
 pydantic-settings
 

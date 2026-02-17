@@ -169,6 +169,11 @@ async def chatwoot_webhook(payload: ChatwootWebhookPayload):
     Only processes message_created events with incoming message_type.
     Dispatches AI response back to Chatwoot based on eval gate decision.
     """
+    # Handle message edits (human corrections of AI responses)
+    if payload.event == "message_updated":
+        await _handle_message_edit(payload)
+        return {"status": "processed", "event": "message_updated"}
+
     if payload.event != "message_created":
         return {"status": "ignored", "reason": f"event={payload.event}"}
 
@@ -301,3 +306,69 @@ async def _handle_pipeline_error(conversation_id: int, error: str) -> None:
         await add_labels(conversation_id, ["ai_error"])
     except Exception as e:
         logger.error("chatwoot_error_handler_failed", error=str(e))
+
+
+async def _handle_message_edit(payload: ChatwootWebhookPayload) -> None:
+    """Detect and record human corrections of AI messages.
+
+    When a human agent edits a bot message in Chatwoot, this captures the
+    correction for the learning pipeline (Track 2).
+    """
+    if not settings.learning_few_shot_enabled:
+        return
+
+    # Only process outgoing messages (AI-generated) that were edited
+    if payload.message_type != "outgoing":
+        return
+
+    content_after = payload.content
+    if not content_after or not content_after.strip():
+        return
+
+    conversation_id = str(payload.conversation.id) if payload.conversation else None
+    if not conversation_id:
+        return
+
+    session_id = f"cw_{conversation_id}"
+
+    try:
+        from database.queries import get_last_ai_message, get_session_category
+
+        original = get_last_ai_message(session_id)
+        if not original or original == content_after:
+            return
+
+        category = get_session_category(session_id) or "unknown"
+
+        from learning.feedback import (
+            CorrectionRecord,
+            classify_correction,
+            save_correction,
+        )
+
+        classification = await classify_correction(original, content_after)
+
+        save_correction(CorrectionRecord(
+            conversation_id=conversation_id,
+            session_id=session_id,
+            category=category,
+            ai_response=original,
+            human_edit=content_after,
+            correction_type=classification.correction_type,
+            specific_issue=classification.specific_issue,
+            key_changes=classification.key_changes,
+        ))
+
+        logger.info(
+            "correction_captured",
+            conversation_id=conversation_id,
+            category=category,
+            correction_type=classification.correction_type,
+        )
+
+    except Exception as e:
+        logger.error(
+            "handle_message_edit_failed",
+            conversation_id=conversation_id,
+            error=str(e),
+        )

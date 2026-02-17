@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # Team mode (Phase 8: specialist agents + QA agent)
     team_mode_enabled: bool = False
 
+    # Learning Machine (Phase 9: dual-track learning for support agents)
+    learning_db_url: str = ""  # Direct PostgreSQL URL for Agno LearningMachine
+    learning_enabled: bool = False  # Enable Agno Learning Machine (customer memory)
+    learning_few_shot_enabled: bool = False  # Enable few-shot correction injection
+
     # Mock APIs (for demo/development)
     use_mock_apis: bool = True  # Switch between mock and real external APIs
 

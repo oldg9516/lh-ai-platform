@@ -15,6 +15,7 @@ from agno.models.openai import OpenAIChat
 
 from agents.config import CATEGORY_CONFIG
 from agents.instructions import load_instructions
+from config import settings
 from knowledge.pinecone_client import create_knowledge
 from tools import resolve_tools, resolve_tools_for_copilot
 
@@ -134,7 +135,7 @@ for _key, _spec in SPECIALIST_CONFIGS.items():
         CATEGORY_TO_SPECIALIST[_cat] = _key
 
 
-def create_specialist_agent(
+async def create_specialist_agent(
     category: str,
     customer_email: str | None = None,
     use_hitl: bool = False,
@@ -143,7 +144,8 @@ def create_specialist_agent(
 
     Unlike create_support_agent (one agent per category), specialists
     cover multiple related categories with a broader tool set and
-    domain-specific role context.
+    domain-specific role context. When learning is enabled, adds
+    Agno Learning Machine for customer memory and few-shot corrections.
 
     Args:
         category: One of the 10 valid category strings.
@@ -167,6 +169,17 @@ def create_specialist_agent(
 
     # Prepend specialist role context
     instructions.insert(0, spec.role)
+
+    # Inject few-shot corrections from human edits (Track 2: quality improvement)
+    if settings.learning_few_shot_enabled:
+        try:
+            from learning.few_shot import build_few_shot_instructions
+
+            few_shot = await build_few_shot_instructions(category)
+            if few_shot:
+                instructions.append(few_shot)
+        except Exception as e:
+            logger.warning("few_shot_injection_failed", category=category, error=str(e))
 
     # Add customer email context
     if customer_email:
@@ -224,6 +237,21 @@ def create_specialist_agent(
     if resolved:
         agent_kwargs["tools"] = resolved
 
+    # Track 1: Agno Learning Machine (customer memory/personalization)
+    if settings.learning_enabled and customer_email and settings.learning_db_url:
+        try:
+            from agno.db.postgres import PostgresDb
+            from agno.learn import LearningMachine, LearningMode, UserMemoryConfig
+
+            db = PostgresDb(db_url=settings.learning_db_url)
+            agent_kwargs["db"] = db
+            agent_kwargs["user_id"] = customer_email
+            agent_kwargs["learning"] = LearningMachine(
+                user_memory=UserMemoryConfig(mode=LearningMode.ALWAYS),
+            )
+        except Exception as e:
+            logger.warning("learning_machine_init_failed", error=str(e))
+
     agent = Agent(**agent_kwargs)
 
     logger.info(
@@ -233,6 +261,7 @@ def create_specialist_agent(
         model=spec.model,
         tools_count=len(resolved),
         namespaces=spec.pinecone_namespaces,
+        learning_enabled="learning" in agent_kwargs,
     )
 
     return agent
