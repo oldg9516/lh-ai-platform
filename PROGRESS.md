@@ -571,30 +571,54 @@
 
 ---
 
-## Phase 8: Multi-Agent Teams
+## Phase 8: Multi-Agent Specialists + QA Agent ✅ COMPLETE
 
 **См. документацию:**
 - [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md#phase-8-multi-agent-teams)
 - [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — детальный анализ Phase 6-10 + Agno Learning Machine
 
-### Team Architecture
-- [ ] agents/teams.py:
-  - [ ] Intake Agent (GPT-5-mini, triage + routing)
-  - [ ] Specialist Agents:
-    - [ ] Billing Specialist (payment, refund, subscription questions)
-    - [ ] Shipping Specialist (delivery, tracking, address)
-    - [ ] Retention Specialist (pause, cancel, downsell) — Sonnet 4.5 + reasoning
-    - [ ] Quality Specialist (damage, leaking, replacement)
-  - [ ] QA Agent (Claude Sonnet 4.5, заменяет Eval Gate)
-  - [ ] Agno Team orchestration
-- [ ] Team coordinator: routing decision logic
-- [ ] Inter-agent communication (shared context)
-- [ ] Retry logic: QA reject → specialist refines → QA re-check
+**Архитектурное решение:** Не используем `agno.team.Team` — у нас уже есть рабочий router + orchestrator. Team добавил бы лишний LLM-вызов для routing. Вместо этого: specialist agents + QA agent интегрированы в существующий orchestrator через feature flag.
 
-### Integration
-- [ ] Update orchestrator: support both single-agent and team modes
+### Specialist Agents ✅
+- [x] `agents/specialists.py` — 4 specialist agent configs + factory:
+  - [x] **Billing Specialist** — `payment_question`, `frequency_change_request`, `skip_or_pause_request` (GPT-5.1, 5 tools)
+  - [x] **Shipping Specialist** — `shipping_or_delivery_question`, `recipient_or_address_change` (GPT-5.1, 4 tools)
+  - [x] **Retention Specialist** — `retention_primary_request`, `retention_repeated_request` (GPT-5.1 + reasoning=medium, 5 tools)
+  - [x] **Quality Specialist** — `damaged_or_leaking_item_report`, `customization_request`, `gratitude` (GPT-5.1, 4 tools)
+- [x] `CATEGORY_TO_SPECIALIST` reverse lookup — all 10 categories mapped
+- [x] `create_specialist_agent(category)` factory — domain-specific role context, broader tool sets, multi-namespace knowledge
+- [x] Each specialist has broader tools than single-category agent (superset guarantee)
+
+### QA Agent ✅
+- [x] `agents/qa_agent.py` — replaces LLM tier of eval gate in team mode:
+  - [x] New decision: `"refine"` — response needs specific improvement, provides feedback
+  - [x] `feedback` field — concrete instructions for specialist on what to fix
+  - [x] `attempt` parameter — on retry (attempt 2+), no more refine, only send/draft/escalate
+  - [x] Regex fast-fail reused from `eval_gate.fast_safety_check()` (no duplication)
+  - [x] GPT-5.1 model (same as eval gate)
+
+### Orchestrator Integration ✅
+- [x] `agents/orchestrator.py` updated:
+  - [x] `PipelineContext` — new fields: `use_team_mode`, `specialist_key`, `attempt`, `qa_feedback`
+  - [x] `process()` — accepts `use_team_mode` param, defaults to `settings.team_mode_enabled`
+  - [x] Stage 4 (`_run_agent`): branches to `create_specialist_agent()` or `create_support_agent()`
+  - [x] Stage 6 (`_evaluate`): branches to `qa_evaluate()` or `evaluate_response()`
+  - [x] Retry loop: if QA says "refine" on attempt 1 → append feedback → re-run stages 4-6
+  - [x] `_build_result`: team mode metadata (specialist, attempts) in PipelineResult
+- [x] Feature flag: `TEAM_MODE_ENABLED=false` in `config.py` (disabled by default)
+- [x] Backwards compatible: team_mode=false → identical to Phase 7 behavior
+
+### Tests ✅
+- [x] `tests/test_specialists.py` — 22 tests (configs, mapping, factory, tool superset)
+- [x] `tests/test_qa_agent.py` — 14 tests (model, regex, prompt builder)
+- [x] `tests/test_orchestrator_team.py` — 10 tests (context fields, metadata, feature flag)
+- [x] **266 total tests passing** (220 existing + 46 new)
+- [x] Commit: `3d661e3`
+
+### Future (not in scope for Phase 8)
 - [ ] A/B testing: single-agent vs team (на 10% трафика)
 - [ ] Langfuse comparison: resolution rate, latency, quality scores
+- [ ] `agno.team.Team` integration if inter-agent coordination is needed (Phase 9+)
 
 ---
 
