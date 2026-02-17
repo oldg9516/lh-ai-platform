@@ -180,7 +180,9 @@ class AgentBufferedResult:
 
     text: str = ""
     hitl_events: list = field(default_factory=list)
+    display_events: list = field(default_factory=list)
     tool_calls_made: list = field(default_factory=list)
+    has_hitl: bool = False
 
 
 # --- OpenAI Function Schemas ---
@@ -623,24 +625,27 @@ async def _run_agent_buffered(
 
             result.tool_calls_made.append(tool_name)
 
-            if tool_name in FRONTEND_TOOL_NAMES:
-                # HITL/Display tool: collect AG-UI events for later emission
-                result.hitl_events.append(
-                    ToolCallStartEvent(
-                        toolCallId=tc["id"],
-                        toolCallName=tool_name,
-                    )
-                )
-                result.hitl_events.append(
-                    ToolCallArgsEvent(
-                        toolCallId=tc["id"],
-                        delta=tool_args_str,
-                    )
-                )
-                result.hitl_events.append(
-                    ToolCallEndEvent(toolCallId=tc["id"])
-                )
+            tool_events = [
+                ToolCallStartEvent(
+                    toolCallId=tc["id"],
+                    toolCallName=tool_name,
+                ),
+                ToolCallArgsEvent(
+                    toolCallId=tc["id"],
+                    delta=tool_args_str,
+                ),
+                ToolCallEndEvent(toolCallId=tc["id"]),
+            ]
+
+            if tool_name in HITL_TOOL_NAMES:
+                # True HITL tool: collect events, stop pipeline (human is the gate)
+                result.hitl_events.extend(tool_events)
+                result.has_hitl = True
                 hitl_emitted = True
+            elif tool_name in DISPLAY_TOOL_NAMES:
+                # Display widget: collect events but continue pipeline
+                result.display_events.extend(tool_events)
+                hitl_emitted = True  # still breaks tool loop (display needs frontend)
             else:
                 # Read-only tool: execute server-side
                 tool_result = await _execute_tool(tool_name, tool_args)
@@ -1101,8 +1106,11 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
             thread_id=thread_id,
         )
 
-        # 9. If HITL tools triggered, emit events and stop (human is the gate)
-        if agent_result.hitl_events:
+        # 9a. If true HITL tools triggered, emit events and stop (human is the gate)
+        if agent_result.has_hitl:
+            # Emit display events first (if any), then HITL events
+            for event in agent_result.display_events:
+                yield encoder.encode(event)
             for event in agent_result.hitl_events:
                 yield encoder.encode(event)
             yield encoder.encode(RunFinishedEvent(threadId=thread_id, runId=run_id))
@@ -1124,7 +1132,46 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
             )
             return
 
+        # 9b. Collect display events to emit later (before text)
+        display_events_to_emit = agent_result.display_events
+
         buffered_text = agent_result.text
+
+        # 9c. Display-only response (display widget called, no/minimal text)
+        # Skip eval gate — the display widget IS the response
+        if display_events_to_emit and not buffered_text.strip():
+            for event in display_events_to_emit:
+                yield encoder.encode(event)
+            yield encoder.encode(RunFinishedEvent(threadId=thread_id, runId=run_id))
+            _persist_copilot_exchange(
+                session_id=session_id,
+                thread_id=thread_id,
+                customer_email=customer_email,
+                customer_name=customer_name,
+                category=category,
+                router_output=router_output,
+                user_message=message,
+                ai_response=f"[Display widget: {', '.join(agent_result.tool_calls_made)}]",
+                decision="send",
+                eval_result=None,
+                outstanding_result=None,
+                config=config,
+                processing_time_ms=int((time.time() - start_time) * 1000),
+            )
+            sync_task = asyncio.create_task(_sync_to_chatwoot(
+                thread_id=thread_id,
+                customer_email=customer_email,
+                customer_name=customer_name,
+                category=category,
+                user_message=message,
+                ai_response=f"[Customer viewed {', '.join(agent_result.tool_calls_made)}]",
+                decision="send",
+            ))
+            sync_task.add_done_callback(
+                lambda t: logger.error("chatwoot_sync_task_error", error=str(t.exception()))
+                if t.exception() else None
+            )
+            return
 
         # 10. OUTSTANDING DETECTION + EVAL GATE
         decision = "send"
@@ -1184,7 +1231,7 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
         )
 
         # 13. CHATWOOT SYNC (background, fire-and-forget)
-        asyncio.create_task(_sync_to_chatwoot(
+        sync_task = asyncio.create_task(_sync_to_chatwoot(
             thread_id=thread_id,
             customer_email=customer_email,
             customer_name=customer_name,
@@ -1193,8 +1240,16 @@ async def _agent_stream(message: str, thread_id: str) -> AsyncGenerator[str, Non
             ai_response=buffered_text,
             decision=decision,
         ))
+        sync_task.add_done_callback(
+            lambda t: logger.error("chatwoot_sync_task_error", error=str(t.exception()))
+            if t.exception() else None
+        )
 
         # 14. STREAM TO CLIENT based on decision
+        # Emit display widget events first (before text)
+        for event in display_events_to_emit:
+            yield encoder.encode(event)
+
         msg_id = str(uuid4())
 
         if decision == "send":

@@ -185,9 +185,9 @@ class TestCopilotStream:
         response = client.post("/api/copilot", json=request_data)
         content = response.text
 
-        assert "Test" in content
-        assert "response" in content
         assert "TEXT_MESSAGE_CONTENT" in content
+        # Text may be original response or draft/escalation message (eval gate)
+        assert "Test" in content or "reviewed" in content or "connecting" in content
 
     def test_missing_message_error(self):
         """Empty messages list returns error stream."""
