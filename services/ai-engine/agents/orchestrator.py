@@ -7,8 +7,11 @@ Extracts the monolithic chat() logic into a structured pipeline:
 3. Context building (history + email)
 4. Agent execution + Outstanding detection (parallel)
 5. Post-processing (cancel link, response assembly)
-6. Evaluation (eval gate)
+6. Evaluation (eval gate OR QA agent in team mode)
 7. Persistence (save to DB, best-effort)
+
+Team mode: specialist agents replace the generic support agent,
+and the QA agent replaces eval gate with retry capability.
 
 Each stage is a method, making the flow testable and extensible.
 """
@@ -24,9 +27,12 @@ from agents.config import CATEGORY_CONFIG
 from agents.eval_gate import evaluate_response
 from agents.name_extractor import extract_customer_name
 from agents.outstanding import detect_outstanding
+from agents.qa_agent import qa_evaluate
 from agents.response_assembler import assemble_response
 from agents.router import RouterOutput, classify_message
+from agents.specialists import CATEGORY_TO_SPECIALIST, create_specialist_agent
 from agents.support import create_support_agent
+from config import settings
 from database.queries import (
     get_conversation_history,
     save_eval_result,
@@ -76,6 +82,12 @@ class PipelineContext:
     eval_checks: list = field(default_factory=list)
     override_reason: str | None = None
 
+    # Team mode
+    use_team_mode: bool = False
+    specialist_key: str | None = None
+    attempt: int = 1
+    qa_feedback: str | None = None
+
     # Timing
     start_time: float = field(default_factory=time.time)
     processing_time_ms: int = 0
@@ -115,6 +127,7 @@ class SupportOrchestrator:
         contact_name: str | None = None,
         channel: str = "widget",
         metadata: dict | None = None,
+        use_team_mode: bool | None = None,
     ) -> PipelineResult:
         """Run the full support pipeline.
 
@@ -126,6 +139,8 @@ class SupportOrchestrator:
             contact_name: Customer name from contact info.
             channel: Communication channel (widget, email, etc.).
             metadata: Additional metadata.
+            use_team_mode: If True, use specialist agents + QA agent.
+                If None, reads from settings.team_mode_enabled.
 
         Returns:
             PipelineResult with response, category, decision, etc.
@@ -138,9 +153,14 @@ class SupportOrchestrator:
             contact_name=contact_name,
             channel=channel,
             metadata=metadata or {},
+            use_team_mode=use_team_mode if use_team_mode is not None else settings.team_mode_enabled,
         )
 
-        logger.info("pipeline_start", session_id=ctx.session_id)
+        logger.info(
+            "pipeline_start",
+            session_id=ctx.session_id,
+            team_mode=ctx.use_team_mode,
+        )
 
         # Stage 1: Safety
         result = SupportOrchestrator._check_safety(ctx)
@@ -149,6 +169,10 @@ class SupportOrchestrator:
 
         # Stage 2: Classification + Name (parallel)
         await SupportOrchestrator._classify(ctx)
+
+        # Resolve specialist key for team mode
+        if ctx.use_team_mode:
+            ctx.specialist_key = CATEGORY_TO_SPECIALIST.get(ctx.classification.primary)
 
         # Stage 3: Build context
         SupportOrchestrator._build_context(ctx)
@@ -161,8 +185,30 @@ class SupportOrchestrator:
         # Stage 5: Post-processing
         SupportOrchestrator._post_process(ctx)
 
-        # Stage 6: Evaluation
+        # Stage 6: Evaluation (with retry loop in team mode)
         await SupportOrchestrator._evaluate(ctx)
+
+        # Team mode retry: if QA says "refine", re-run agent with feedback
+        if ctx.use_team_mode and ctx.decision == "refine" and ctx.attempt == 1:
+            logger.info(
+                "qa_retry_triggered",
+                session_id=ctx.session_id,
+                feedback=ctx.qa_feedback,
+            )
+            ctx.attempt = 2
+            # Append QA feedback to agent input
+            ctx.agent_input = (
+                f"{ctx.agent_input}\n\n"
+                f"[QA FEEDBACK — please revise your response]\n"
+                f"{ctx.qa_feedback}\n"
+                f"[End QA Feedback]"
+            )
+            # Re-run stages 4-6
+            result = await SupportOrchestrator._run_agent(ctx)
+            if result:
+                return result
+            SupportOrchestrator._post_process(ctx)
+            await SupportOrchestrator._evaluate(ctx)
 
         # Finalize timing
         ctx.processing_time_ms = int((time.time() - ctx.start_time) * 1000)
@@ -235,10 +281,14 @@ class SupportOrchestrator:
     async def _run_agent(ctx: PipelineContext) -> PipelineResult | None:
         """Stage 4: Support Agent + Outstanding Detection (parallel).
 
+        In team mode, uses specialist agents instead of the generic support agent.
         Returns early PipelineResult if agent fails (escalation).
         """
         async def _support():
-            agent = create_support_agent(ctx.classification.primary)
+            if ctx.use_team_mode:
+                agent = create_specialist_agent(ctx.classification.primary)
+            else:
+                agent = create_support_agent(ctx.classification.primary)
             response = await agent.arun(ctx.agent_input)
             return str(response.content)
 
@@ -292,28 +342,52 @@ class SupportOrchestrator:
 
     @staticmethod
     async def _evaluate(ctx: PipelineContext) -> None:
-        """Stage 6: Eval Gate (regex fast-fail + LLM evaluation)."""
+        """Stage 6: Eval Gate or QA Agent evaluation.
+
+        In team mode, uses the QA Agent with refine/retry capability.
+        In standard mode, uses the existing eval gate.
+        """
         config = CATEGORY_CONFIG[ctx.classification.primary]
-        eval_result = await evaluate_response(
-            customer_message=ctx.message,
-            ai_response=ctx.ai_response,
-            category=ctx.classification.primary,
-            is_outstanding=ctx.outstanding_is_outstanding,
-            tools_available=config.tools or None,
-        )
 
-        ctx.decision = eval_result.decision
-        ctx.confidence = eval_result.confidence
-        ctx.eval_checks = [c.model_dump() for c in eval_result.checks]
-        ctx.override_reason = eval_result.override_reason
+        if ctx.use_team_mode:
+            # QA Agent evaluation (team mode)
+            qa_result = await qa_evaluate(
+                customer_message=ctx.message,
+                ai_response=ctx.ai_response,
+                category=ctx.classification.primary,
+                is_outstanding=ctx.outstanding_is_outstanding,
+                tools_available=config.tools or None,
+                attempt=ctx.attempt,
+                previous_feedback=ctx.qa_feedback,
+            )
+            ctx.decision = qa_result.decision
+            ctx.confidence = qa_result.confidence
+            ctx.eval_checks = [c.model_dump() for c in qa_result.checks]
+            ctx.override_reason = qa_result.override_reason
+            ctx.qa_feedback = qa_result.feedback
+        else:
+            # Standard eval gate
+            eval_result = await evaluate_response(
+                customer_message=ctx.message,
+                ai_response=ctx.ai_response,
+                category=ctx.classification.primary,
+                is_outstanding=ctx.outstanding_is_outstanding,
+                tools_available=config.tools or None,
+            )
+            ctx.decision = eval_result.decision
+            ctx.confidence = eval_result.confidence
+            ctx.eval_checks = [c.model_dump() for c in eval_result.checks]
+            ctx.override_reason = eval_result.override_reason
 
-        if ctx.decision != "send":
+        if ctx.decision not in ("send", "refine"):
             logger.warning(
-                "eval_gate_not_send",
+                "evaluation_not_send",
                 session_id=ctx.session_id,
                 decision=ctx.decision,
                 confidence=ctx.confidence,
                 override_reason=ctx.override_reason,
+                team_mode=ctx.use_team_mode,
+                attempt=ctx.attempt,
             )
 
     @staticmethod
@@ -375,20 +449,25 @@ class SupportOrchestrator:
     def _build_result(ctx: PipelineContext) -> PipelineResult:
         """Build the final PipelineResult from context."""
         config = CATEGORY_CONFIG[ctx.classification.primary]
+        meta = {
+            "model_used": config.model,
+            "reasoning_effort": config.reasoning_effort,
+            "processing_time_ms": ctx.processing_time_ms,
+            "is_outstanding": ctx.outstanding_is_outstanding,
+            "outstanding_trigger": ctx.outstanding_trigger,
+            "secondary_category": ctx.classification.secondary,
+            "customer_name": ctx.customer_name,
+            "eval_checks": ctx.eval_checks,
+        }
+        if ctx.use_team_mode:
+            meta["team_mode"] = True
+            meta["specialist"] = ctx.specialist_key
+            meta["attempts"] = ctx.attempt
         return PipelineResult(
             response=ctx.ai_response,
             session_id=ctx.session_id,
             category=ctx.classification.primary,
             decision=ctx.decision,
             confidence=ctx.confidence,
-            metadata={
-                "model_used": config.model,
-                "reasoning_effort": config.reasoning_effort,
-                "processing_time_ms": ctx.processing_time_ms,
-                "is_outstanding": ctx.outstanding_is_outstanding,
-                "outstanding_trigger": ctx.outstanding_trigger,
-                "secondary_category": ctx.classification.secondary,
-                "customer_name": ctx.customer_name,
-                "eval_checks": ctx.eval_checks,
-            },
+            metadata=meta,
         )

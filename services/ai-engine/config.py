@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     app_version: str = "0.1.0"
 
+    # Team mode (Phase 8: specialist agents + QA agent)
+    team_mode_enabled: bool = False
+
     # Mock APIs (for demo/development)
     use_mock_apis: bool = True  # Switch between mock and real external APIs
 
