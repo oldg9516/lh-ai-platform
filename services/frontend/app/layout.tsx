@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-	title: 'Lev Haolam - AI Platform',
+	title: 'Lev Haolam - Customer Support',
 	description:
-		'AI-powered customer support and analytics platform',
+		'Get help with your subscription, deliveries, and more',
 }
 
 export default function RootLayout({

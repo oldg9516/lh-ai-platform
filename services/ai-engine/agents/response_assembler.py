@@ -117,10 +117,10 @@ def assemble_response(
     opener = opener_list[idx % len(opener_list)]
 
     # Body — strip existing greeting if AI already added one
-    body = _strip_existing_greeting(raw_response, customer_name)
+    body = strip_existing_greeting(raw_response, customer_name)
 
     # Sanitize — remove unsafe phrases
-    body = _sanitize_response(body, category)
+    body = sanitize_response(body, category)
 
     # Closer
     closer = CLOSERS[idx % len(CLOSERS)]
@@ -137,7 +137,7 @@ def assemble_response(
     return "\n".join(parts)
 
 
-def _strip_existing_greeting(text: str, customer_name: str) -> str:
+def strip_existing_greeting(text: str, customer_name: str) -> str:
     """Remove duplicate greeting if the AI already added one.
 
     Strips patterns like 'Dear John,', 'Hi John,', 'Hello Client,' etc.
@@ -154,7 +154,7 @@ def _strip_existing_greeting(text: str, customer_name: str) -> str:
     return text
 
 
-def _sanitize_response(text: str, category: str) -> str:
+def sanitize_response(text: str, category: str) -> str:
     """Remove unsafe or internal phrases from AI response.
 
     Filters out:

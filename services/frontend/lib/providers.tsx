@@ -33,11 +33,11 @@ export function Providers({ children }: ProvidersProps) {
         showDevConsole={process.env.NODE_ENV === "development"}
       >
         <CopilotSidebar
-          defaultOpen={false}
+          defaultOpen={true}
           clickOutsideToClose={false}
           labels={{
             title: "Lev Haolam Support",
-            initial: "How can I help you today?",
+            initial: "Hi! How can I help you today?",
           }}
         >
           {children}

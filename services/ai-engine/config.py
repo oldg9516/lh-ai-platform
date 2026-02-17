@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     pattern_min_frequency: int = 3  # Min corrections to trigger suggestion
     pattern_window_days: int = 7  # Lookback window in days
 
+    # CopilotKit pipeline hardening (customer-facing chat upgrade)
+    copilot_eval_gate_enabled: bool = False  # Enable eval gate in CopilotKit pipeline
+    copilot_chatwoot_sync_enabled: bool = False  # Sync CopilotKit conversations to Chatwoot
+    chatwoot_copilot_inbox_id: int | None = None  # Chatwoot inbox ID for CopilotKit conversations
+
     # Mock APIs (for demo/development)
     use_mock_apis: bool = True  # Switch between mock and real external APIs
 

@@ -2,7 +2,7 @@
 
 from agents.response_assembler import (
     assemble_response,
-    _strip_existing_greeting,
+    strip_existing_greeting,
     _is_system_response,
 )
 
@@ -90,23 +90,23 @@ class TestStripGreeting:
     """Test removal of duplicate AI-generated greetings."""
 
     def test_strips_dear_name(self):
-        result = _strip_existing_greeting("Dear Sarah,\nYour package is here.", "Sarah")
+        result = strip_existing_greeting("Dear Sarah,\nYour package is here.", "Sarah")
         assert result == "Your package is here."
 
     def test_strips_hi_name(self):
-        result = _strip_existing_greeting("Hi John,\nWe are on it.", "John")
+        result = strip_existing_greeting("Hi John,\nWe are on it.", "John")
         assert result == "We are on it."
 
     def test_strips_hello_name(self):
-        result = _strip_existing_greeting("Hello Client,\nThank you.", "Client")
+        result = strip_existing_greeting("Hello Client,\nThank you.", "Client")
         assert result == "Thank you."
 
     def test_strips_generic_greeting(self):
-        result = _strip_existing_greeting("Dear Customer,\nWe received your request.", "Sarah")
+        result = strip_existing_greeting("Dear Customer,\nWe received your request.", "Sarah")
         assert result == "We received your request."
 
     def test_no_greeting_unchanged(self):
-        result = _strip_existing_greeting("Your package is on the way.", "Sarah")
+        result = strip_existing_greeting("Your package is on the way.", "Sarah")
         assert result == "Your package is on the way."
 
 
