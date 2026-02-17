@@ -30,6 +30,7 @@ const serviceAdapter = new ExperimentalEmptyAdapter();
 
 const agents = {
   default: new HttpAgent({ url: `${getBackendUrl()}/api/copilot` }),
+  dash: new HttpAgent({ url: `${getBackendUrl()}/api/dash-copilot` }),
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

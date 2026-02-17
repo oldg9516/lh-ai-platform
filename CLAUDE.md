@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AI-powered live chat platform for Lev Haolam customer support. Replaces email-only pipeline (n8n + Zoho) with real-time multi-channel chat using AI agents that classify, respond, and execute actions autonomously.
 
-**Stack:** Agno AgentOS (Python 3.12) + Chatwoot (Omnichannel) + Langfuse (Observability & Eval) + PostgreSQL (Supabase) + Pinecone + Docker Compose
+**Stack:** Agno AgentOS (Python 3.12) + CopilotKit/AG-UI (Next.js 16) + Chatwoot (Omnichannel) + Langfuse (Observability & Eval) + PostgreSQL (Supabase) + Pinecone + Docker Compose
 
-**Current Phase:** Phase 5 complete (AgentOS Analytics Service). 17 containers (11 core + 4 Chatwoot + 2 Supabase Studio/Meta), full pipeline working end-to-end via Chatwoot widget and email. Phase 4 complete (multi-turn, retention reasoning, email channel). See `PROGRESS.md` for phase tracking.
+**Current Status:** Phase 6 complete (Generative UI + HITL forms via CopilotKit). Phase 7 Days 4-7 complete (rich context, sentiment, analytics, demo materials). Phase 8: Dash analytics agent replaces custom analytics service. 19 containers, full pipeline working end-to-end via Chatwoot widget, email, CopilotKit chat, and Dash analytics. See `PROGRESS.md` for phase tracking.
 
 ## Commands
 
@@ -19,180 +19,164 @@ docker compose up -d
 # Development with hot reload (ai-engine only)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up ai-engine
 
+# Frontend development (hot reload, outside Docker)
+cd services/frontend && pnpm install && pnpm dev   # Port 3000, auto-proxy to localhost:8000
+
 # Rebuild after requirements.txt or Dockerfile changes
 docker compose build ai-engine
+docker compose build frontend
 
 # Logs
 docker compose logs -f ai-engine
+docker compose logs -f frontend
 
-# Health check
-curl http://localhost:8000/api/health
+# Health checks
+curl http://localhost:8000/api/health    # AI Engine
+curl http://localhost:9000/health        # Dash Analytics Agent
 
-# Test chat UI
-open http://localhost:8000/chat
-
-# Langfuse UI (observability + eval)
-open http://localhost:3100
+# UIs
+open http://localhost:8000/chat          # Legacy test chat
+open http://localhost:3003               # CopilotKit chat (Docker)
+open http://localhost:3000               # CopilotKit chat (local dev)
+open http://localhost:3010               # Chatwoot
+open http://localhost:3100               # Langfuse
 
 # Import data into local Supabase
-python database/import.py             # ai_answerer_instructions
-python database/import_threads.py     # support_threads_data
+python database/import.py               # ai_answerer_instructions
+python database/import_threads.py       # support_threads_data
+python database/import_customers.py     # ETL: JSON → normalized customer tables
 
-# Analytics Service (Phase 5)
-docker compose exec analytics python load_knowledge.py  # Load analytics KB to Pinecone
-curl http://localhost:9000/api/health                    # Analytics health check
-curl http://localhost:9000/api/metrics/overview          # Get platform metrics
-open http://os.agno.com                                  # AgentOS Control Plane (requires AGNO_API_KEY)
+# Dash knowledge base
+docker compose exec dash python scripts/load_knowledge.py
 ```
 
 **Run tests:**
 ```bash
-docker compose exec ai-engine pytest tests/ -v                           # all tests (202 total)
-docker compose exec ai-engine pytest tests/ -v --ignore=tests/test_pipeline.py  # unit only (162 tests, fast)
-docker compose exec ai-engine pytest tests/test_e2e_multiturn.py -v     # multi-turn E2E (5 tests)
+docker compose exec ai-engine pytest tests/ -v                                    # all tests (215+)
+docker compose exec ai-engine pytest tests/ -v --ignore=tests/test_pipeline.py    # unit only (fast)
+docker compose exec ai-engine pytest tests/test_e2e_multiturn.py -v              # E2E multi-turn
+docker compose exec ai-engine pytest tests/test_context_builder.py -v            # context builder
+docker compose exec ai-engine pytest tests/test_sentiment.py -v                  # sentiment tracking
+docker compose exec ai-engine pytest tests/test_mock_apis.py -v                  # mock APIs
+docker compose exec ai-engine pytest tests/test_copilot_agui.py -v              # AG-UI endpoint
+
+# Smoke tests (from host, requires running services)
+./smoke-tests.sh 1                      # Automated 6-scenario smoke test
+./test-scenarios.sh                     # Manual test commands
 ```
-
-**Test breakdown:** 162 unit + 35 integration + 5 E2E multi-turn = 202 tests passing
-
-**Chatwoot UI:** `open http://localhost:3010`
 
 ## Architecture
 
-### Request Pipeline (api/routes.py)
+### Two Chat Pipelines
 
-This is the actual execution flow for every incoming message:
+The system has **two separate chat pipelines** serving different UIs:
+
+1. **Legacy Pipeline** (`api/routes.py` → `POST /api/chat`) — used by Chatwoot webhook and legacy test UI. Full Agno agent with eval gate, response assembly, and HTML formatting.
+
+2. **CopilotKit Pipeline** (`api/copilot.py` → `POST /api/copilot`) — used by Next.js frontend. Direct OpenAI API streaming with AG-UI protocol events. Supports HITL forms and display widgets.
+
+### Legacy Pipeline (api/routes.py)
 
 ```
-POST /api/chat
-       │
-       ▼
-1. Pre-safety check (check_red_lines)
-   - Regex patterns: death threats, legal threats, bank disputes, self-harm
-   - If flagged → immediate escalate response, skip everything else
-       │
-       ▼
-2. Router Agent (classify_message)
-   - GPT-5.1, no reasoning, structured output → RouterOutput
-   - Returns: primary category, secondary, urgency, extracted email
-       │
-       ▼
-3. Load conversation history (get_conversation_history)
-   - Last 10 messages (5 turns) for this session_id
-   - Agent responses truncated to 500 chars in history
-   - Manual prepending to agent_input (NOT Agno native sessions)
-       │
-       ▼
-4. Support Agent (create_support_agent → agent.arun)
-   - Factory creates agent dynamically from CATEGORY_CONFIG
-   - Configures: model, reasoning_effort, tools, instructions (from DB), Pinecone knowledge namespace
-   - Customer email passed to enable tool lookups
-   - If agent fails → escalate response
-       │
-       ▼
-5. Outstanding Detection (detect_outstanding) — parallel with step 4
-   - GPT-5-mini, DB rules + Pinecone outstanding-cases namespace
-   - Returns: is_outstanding, trigger, confidence
-       │
-       ▼
-6. Cancel link injection (retention categories only)
-   - AES-256-GCM encrypted link with customer email
-       │
-       ▼
-7. Response assembly (agents/response_assembler.py)
-   - Deterministic: greeting + opener + body + closer + sign-off in HTML divs
-       │
-       ▼
-8. Eval Gate (evaluate_response)
-   - Tier 1: regex fast-fail (subscription safety)
-   - Tier 2: LLM GPT-5.1 evaluation (send/draft/escalate)
-   - Receives tools_available context so tool-returned data passes accuracy check
-       │
-       ▼
-9. Save to database (save_session, save_message, save_eval_result)
-   - Non-blocking: errors logged but don't fail the response
-       │
-       ▼
-10. Return ChatResponse (response, category, decision, confidence)
+POST /api/chat → Pre-safety → Router Agent → Load History → Support Agent
+  → Outstanding Detection (parallel) → Cancel Link → Response Assembly
+  → Eval Gate → Save to DB → Return ChatResponse
 ```
+
+Key details:
+- Pre-safety: regex patterns (death threats, legal threats, bank disputes, self-harm)
+- Router: GPT-5.1, structured output → RouterOutput (category, urgency, email, sentiment, escalation_signal)
+- Support Agent: factory from `CATEGORY_CONFIG` (10 categories), model + tools + knowledge per category
+- Outstanding Detection: GPT-5-mini, parallel with support agent
+- Response Assembly: deterministic HTML (greeting + opener + body + closer + sign-off)
+- Eval Gate: Tier 1 regex fast-fail + Tier 2 LLM evaluation → send/draft/escalate
+
+### CopilotKit Pipeline (api/copilot.py)
+
+```
+POST /api/copilot → Router Agent → Rich Context Builder → Direct OpenAI Streaming
+  → Tool Call Loop (max 5): LLM → tool → result → LLM
+  → HITL tools → AG-UI ToolCall events → CopilotKit renders forms
+  → Read-only tools → executed server-side, results fed back to LLM
+  → Display tools → self-fetching widgets call /api/copilot/fetch-data
+```
+
+**Why direct OpenAI?** Agno SDK doesn't emit proper ToolCall events needed by AG-UI protocol. The copilot endpoint bypasses Agno and streams OpenAI responses directly, emitting AG-UI events.
+
+**Tool classification:**
+- `HITL_TOOL_NAMES`: pause_subscription, change_frequency, skip_month, change_address, create_damage_claim — emit ToolCall events, frontend renders confirmation forms
+- `DISPLAY_TOOL_NAMES`: display_tracking, display_orders, display_box_contents, display_payments — auto-injected via `READ_TO_DISPLAY` mapping
+- `READ_ONLY_TOOLS`: get_subscription, get_customer_history, etc. — executed server-side
+
+**Additional endpoints:**
+- `POST /api/copilot/execute-tool` — executes HITL tools after user approval (whitelist: WRITE_TOOLS only)
+- `POST /api/copilot/fetch-data` — serves data to self-fetching display widgets
 
 ### Chatwoot Webhook (api/routes.py)
 
 ```
-POST /api/webhook/chatwoot
-       │
-       ▼
-1. Filter (event=message_created, type=incoming, not private, not empty)
-2. Dedup (in-memory TTL 5 min)
-3. Extract channel (Channel_Type enum: api_channel, web_widget, email, whatsapp, etc.)
-4. Build session_id: "cw_{conversation_id}" for stable multi-turn sessions
-5. Build ChatRequest → call chat() (same pipeline above)
-6. Dispatch by decision:
-   - send     → Chatwoot public message (client sees it)
-                • Chat channels: HTML stripped for display
-                • Email channels: HTML preserved (native support)
-   - draft    → Chatwoot private note + open + labels
-   - escalate → Chatwoot private note + open + high_priority labels
-7. Error handling: pipeline error → private note + open for agent
+POST /api/webhook/chatwoot → Filter → Dedup (TTL 5 min) → Extract Channel
+  → Build session_id "cw_{conversation_id}" → chat() pipeline
+  → Dispatch: send → public msg, draft → private note, escalate → private note + labels
 ```
 
-**Phase 3 complete:** 12 action tools (5 read-only with real DB data, 7 write stubs). Customer identification via normalized tables: customers, subscriptions, orders, tracking_events.
+### Rich Context Builder (agents/context_builder.py)
 
-**Phase 4 complete:** Multi-turn conversation history (manual, last 10 messages), reasoning_effort="medium" for retention, email channel support.
+Phase 7 addition. `build_customer_context(email)` and `build_full_context(email, session_id, message)` aggregate:
+- Customer profile (name, join_date, LTV, total_orders)
+- Active subscription (frequency, next_charge, status)
+- Recent orders (last 3)
+- Support history (last 3 interactions)
+- Conversation history (smart truncation, 500 chars per message)
+- Outstanding issues (is_outstanding, trigger, confidence)
 
-**Phase 5 complete:** AgentOS Analytics Service with triple access pattern (see below).
-
-### Analytics Service (Phase 5)
-
-**Triple Access Pattern:**
-
-1. **AgentOS Control Plane** (os.agno.com)
-   - Native UI for chatting with analytics agent
-   - Auto-sync to cloud via `AGNO_API_KEY`
-   - Langfuse integration for tracing
-
-2. **Custom FastAPI Endpoints** (localhost:9000)
-   - `/api/metrics/overview` — resolution rate, escalation rate, category distribution
-   - `/api/metrics/categories` — per-category stats
-   - `/api/charts/category-distribution` — Plotly JSON for visualization
-   - `/api/query` — natural language SQL via PostgresTools agent
-
-3. **Langfuse Observability** (localhost:3100)
-   - Separate project: "Analytics Agent"
-   - Traces all SQL queries + LLM calls
-   - Debugging analytics agent behavior
-
-**Architecture:**
-
-```python
-# services/analytics/agent.py
-analytics_agent = Agent(
-    name="analytics_agent",
-    model=OpenAIChat(id="gpt-5-mini"),  # Cheap model for SQL
-    tools=[PostgresTools(host=..., port=..., db_name=..., user=..., password=...)],
-    knowledge=Knowledge(vector_db=PineconeDb(..., namespace="analytics-knowledge")),
-    search_knowledge=True,
-    instructions=[...],  # PostgreSQL-specific guidance
-)
-```
-
-**PostgresTools:** Natural language → SQL queries. Requires separate connection parameters (host, port, db_name, user, password) — does NOT accept `db_url` directly. Use `urllib.parse.urlparse()` to extract components.
-
-**Knowledge Base:** Table schemas, sample queries, business rules loaded into Pinecone `analytics-knowledge` namespace via `load_knowledge.py`.
+Injected into CopilotKit pipeline as context prepended to agent input.
 
 ### Support Agent Factory
 
-The Support Agent is **not** 10 separate agents — it's a single factory function (`create_support_agent(category)` in `agents/support.py`) that dynamically configures model, reasoning effort, tools, Pinecone namespace, and instructions based on `CATEGORY_CONFIG` (defined in `agents/config.py`).
+Single factory function (`create_support_agent(category)` in `agents/support.py`) dynamically configures model, reasoning effort, tools, Pinecone namespace, and instructions based on `CATEGORY_CONFIG` (defined in `agents/config.py`).
 
 **10 categories:** shipping_or_delivery_question, payment_question, frequency_change_request, skip_or_pause_request, recipient_or_address_change, customization_request, damaged_or_leaking_item_report, gratitude, retention_primary_request, retention_repeated_request
 
-**Model selection:** All categories use GPT-5.1. Retention categories (`retention_primary_request`, `retention_repeated_request`) use `model_provider="openai_responses"` with `reasoning_effort="medium"` for deeper reasoning on complex cancellation scenarios.
+**Model selection:** All categories use GPT-5.1. Retention categories use `reasoning_effort="medium"` for deeper reasoning on complex cancellation scenarios.
 
-### Docker Services (17 containers)
+### Frontend (services/frontend/)
+
+Next.js 16 + CopilotKit + AG-UI protocol.
+
+**Key dependencies:** `@copilotkit/react-core` + `react-ui` v1.51.3, `@ag-ui/client` v0.0.45 (HttpAgent), React 19, shadcn/ui + Radix UI, Tailwind CSS v4, Zustand, React Query v5, react-hook-form + zod, sonner (toasts).
+
+**Package manager:** pnpm (not npm/yarn).
+
+**Structure:**
+- `app/page.tsx` — CopilotSidebar with "Lev Haolam Support" branding
+- `app/api/copilot/` — Next.js proxy routes to FastAPI backend
+- `components/forms/` — 5 HITL confirmation forms (PauseSubscription, ChangeFrequency, ChangeAddress, DamageClaim, SkipMonth)
+- `components/widgets/` — 4 display widgets (Tracking, OrderHistory, BoxContents, PaymentHistory)
+- `components/ui/` — shadcn/ui components
+
+**HITL form pattern:** `useHumanInTheLoop` hook → status lifecycle (inProgress → executing → complete) → form calls `/api/copilot/execute-tool` on Approve → `respond()` with result.
+
+**Display widget pattern:** Widget receives `customer_email` via tool args → calls `/api/copilot/fetch-data` → renders rich UI → auto-responds after 500ms.
+
+### Mock API Infrastructure (mock_apis/)
+
+Phase 6.1.5. Protocol-based factory pattern for development without real external APIs.
+
+- `mock_apis/client.py`: MockZohoAPI, MockAddressValidationAPI, MockDamageClaimAPI
+- `mock_apis/factory.py`: Protocol definitions + APIFactory
+- Realistic latencies (300-800ms), structured responses
+- Settings flag: `USE_MOCK_APIS=true` (default)
+- 6 write tools converted to async + APIFactory integration
+
+### Docker Services (19 containers)
 
 | Service | Port | Purpose |
 |---------|------|---------|
 | ai-engine | 8000 | FastAPI + Agno agents (main support pipeline) |
-| analytics | 9000 | AgentOS Analytics Service (PostgresTools + natural language SQL) |
+| frontend | 3003 | Next.js + CopilotKit (AG-UI chat) + Dash chat (/dash) |
+| dash | 9000 | Agno Dash — self-learning data agent (AgentOS) |
+| dash-db | — | PgVector for Dash knowledge/learnings/state |
 | supabase-db | 54322 | PostgreSQL 17 |
 | supabase-rest | — | PostgREST API adapter |
 | supabase-api | 54321 | Nginx reverse proxy for Supabase |
@@ -217,12 +201,12 @@ Both the existing n8n email pipeline and the new Agno chat platform:
 
 The new system adds tables:
 - **Chat platform:** `chat_sessions`, `chat_messages`, `agent_traces`, `tool_executions`, `learning_records`
-- **Customer data (Phase 3):** `customers`, `subscriptions`, `orders`, `tracking_events` — normalized relational model for customer identification and tool lookups
-- **Legacy (n8n only):** `support_threads_data`, `support_dialogs` — read-only for historical data
+- **Customer data:** `customers`, `subscriptions`, `orders`, `tracking_events` — normalized relational model
+- **Legacy (n8n only):** `support_threads_data`, `support_dialogs` — read-only
 
-**Customer Identification:** `database/customer_queries.py` provides 8 query functions: `lookup_customer`, `get_active_subscription_by_email`, `get_subscriptions_by_customer`, `get_orders_by_subscription`, `get_payment_history`, `get_tracking_events`, `get_box_info`, `get_customer_support_history`. Tools use these to fetch real customer data (962 customers, 649 subscriptions, 1826 orders, 268 tracking events imported from production).
+**Customer Identification:** `database/customer_queries.py` provides 8 query functions. Tools use these to fetch real customer data (962 customers, 649 subscriptions, 1826 orders, 268 tracking events imported from production).
 
-Connection: **supabase-py** (REST API) via `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Database schema auto-initializes from SQL files in `services/supabase/init/` (00-roles, 01-schema, 02-permissions, 03-views, 04-customers).
+Connection: **supabase-py** (REST API) via `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Schema auto-initializes from SQL files in `services/supabase/init/` (00-roles, 01-schema, 02-permissions, 03-views, 04-customers, 05-analytics-user).
 
 ### Pinecone
 
@@ -230,40 +214,52 @@ Index: `support-examples`. Per-category namespaces: `outstanding-cases`, `faq`, 
 
 **CRITICAL: Embedding Dimension Configuration**
 
-The `dimension` parameter on `PineconeDb()` only sets the index dimension for validation — it does NOT control the embedding model dimension. Without an explicit embedder, Agno defaults to `OpenAIEmbedder(id="text-embedding-3-large")` which generates **1536-dimensional** vectors.
+The `dimension` parameter on `PineconeDb()` only validates index dimension — it does NOT control the embedding model dimension. Without an explicit embedder, Agno defaults to `OpenAIEmbedder(id="text-embedding-3-large")` which generates **1536-dimensional** vectors.
 
 For indexes with different dimensions (e.g., analytics uses 1024), you MUST explicitly pass an embedder:
 
 ```python
 from agno.knowledge.embedder.openai import OpenAIEmbedder
 
-# For 1024-dimensional index
-embedder = OpenAIEmbedder(
-    id="text-embedding-3-large",
-    dimensions=1024,  # Reduce from default 3072 to match index
-)
-
+embedder = OpenAIEmbedder(id="text-embedding-3-large", dimensions=1024)
 vector_db = PineconeDb(
     name="support-examples",
     dimension=1024,
     namespace="analytics-knowledge",
-    embedder=embedder,  # Explicitly set to generate 1024-dim vectors
+    embedder=embedder,  # MUST explicitly set to generate 1024-dim vectors
 )
 ```
 
 **Symptom if misconfigured:** `Vector dimension 1536 does not match the dimension of the index 1024`
 
-### Multi-turn Conversation History (Phase 4)
+### Dash Analytics Agent (Phase 8)
 
-**Manual implementation** (NOT Agno native sessions due to bugs in SDK 2.x — see GitHub issues #2497, #2570):
+Self-learning data agent based on [agno-agi/dash](https://github.com/agno-agi/dash). Replaces the previous custom analytics service.
 
-1. **Session ID:** Stable across conversation. Chatwoot uses `cw_{conversation_id}`, API fallback `sess_{uuid}`.
-2. **History loading:** `get_conversation_history(session_id, limit=10)` returns last 10 messages (5 turns).
-3. **Truncation:** Agent responses truncated to 500 chars in history to prevent context bloat.
-4. **Injection:** History prepended to agent_input as text with `[Conversation History]` / `[End History]` markers.
-5. **Format:** Each message as `Customer: <message>` or `Agent: <response>`.
+**Architecture:** 6-layer context system:
+1. **Semantic Model** — 9 table schema JSONs loaded into system prompt
+2. **Business Rules** — metrics definitions, data quality gotchas, capitalization rules
+3. **Validated SQL Patterns** — 8 reusable query templates
+4. **Knowledge Base** — PgVector hybrid search (curated, loaded via `load_knowledge.py`)
+5. **Learnings** — auto-discovered patterns via LearningMachine (AGENTIC mode)
+6. **Runtime Schema Inspection** — `introspect_schema` tool for live DDL
 
-See `services/ai-engine/tests/test_e2e_multiturn.py` for multi-turn test scenarios (followup questions, explicit references, session isolation, history limits).
+**Dual DB:** `dash-db` (PgVector) for agent state/knowledge/learnings, Supabase (read-only via `analytics_readonly` user) for customer data queries via SQLTools.
+
+**Model:** `OpenAIResponses("gpt-5.2")` with `LearningMachine(mode=LearningMode.AGENTIC)`.
+
+**API:** AgentOS auto-generates REST endpoints: `POST /agents/dash/runs` (SSE streaming), `/health`.
+
+**Frontend:** `/dash` route in Next.js app — standalone chat UI with SSE streaming, no CopilotKit dependency. API proxy at `/api/dash`.
+
+### Multi-turn Conversation History
+
+**Manual implementation** (NOT Agno native sessions due to SDK bugs #2497, #2570):
+
+1. **Session ID:** Chatwoot uses `cw_{conversation_id}`, API fallback `sess_{uuid}`
+2. **History loading:** `get_conversation_history(session_id, limit=10)` — last 10 messages (5 turns)
+3. **Truncation:** Agent responses truncated to 500 chars
+4. **Injection:** Prepended to agent_input with `[Conversation History]` / `[End History]` markers
 
 ## Critical Safety Rules (NEVER VIOLATE)
 
@@ -275,7 +271,7 @@ See `services/ai-engine/tests/test_e2e_multiturn.py` for multi-turn test scenari
 6. **Refunds** — NEVER without human approval
 7. **Sensitive data** — never in logs
 
-These are enforced in two places: `guardrails/safety.py` (regex-based pre/post checks) and `agents/instructions.py` (GLOBAL_SAFETY_RULES injected into every agent's instructions).
+Enforced in: `guardrails/safety.py` (regex pre/post checks) and `agents/instructions.py` (GLOBAL_SAFETY_RULES injected into every agent).
 
 ## Coding Conventions
 
@@ -294,144 +290,93 @@ The Dockerfile copies `services/ai-engine/` to `/app` inside the container. All 
 from config import settings          # NOT from services.ai_engine.config
 from agents.router import classify_message
 from agents.support import create_support_agent
+from agents.context_builder import build_full_context
 from database.connection import get_client
 from database.queries import get_conversation_history, save_session, save_message
 from database.customer_queries import lookup_customer, get_active_subscription_by_email
 from guardrails.safety import check_red_lines
-from tools import resolve_tools, TOOL_REGISTRY
+from tools import resolve_tools, TOOL_REGISTRY, WRITE_TOOLS
+from mock_apis.factory import APIFactory
 from chatwoot.client import ChatwootClient
 ```
 
-### Action Tools (Phase 3)
+### Action Tools
 
 **12 tools** in `TOOL_REGISTRY` (`tools/__init__.py`):
 
-**Read-only (real data from DB):**
-- `get_subscription(email)` — active subscription details (next charge, frequency, status)
-- `get_customer_history(email)` — order history, tracking, support interactions
-- `get_payment_history(email)` — payment dates, amounts, methods
-- `track_package(email)` — tracking number, carrier, status, estimated delivery
-- `get_box_contents(email)` — products in last box
+**Read-only (real data from DB):** get_subscription, get_customer_history, get_payment_history, track_package, get_box_contents
 
-**Write operations (stubs, return `pending_confirmation`):**
-- `change_frequency(email, new_frequency)` — monthly/bi-monthly/quarterly
-- `skip_month(email, month)` — skip one shipment
-- `pause_subscription(email, months)` — pause for N months
-- `change_address(email, new_address)` — update delivery address
-- `create_damage_claim(email, description)` — file damage report
-- `request_photos(email)` — ask customer for damage photos
+**Write operations (async, mock APIs in dev):** change_frequency, skip_month, pause_subscription, change_address, create_damage_claim, request_photos
 
-**Retention-specific:**
-- `generate_cancel_link(email)` — AES-256-GCM encrypted self-service cancel link
+**Retention-specific:** generate_cancel_link (AES-256-GCM encrypted self-service link)
 
-**Tool resolution:** `resolve_tools(category_tools: list[str])` maps tool names from `CATEGORY_CONFIG.tools` to callable functions. Passed to `Agent(tools=[...])` in factory.
-
-**Customer not found:** Tools return `{"found": false, "message": "..."}` → AI asks for clarification → Eval Gate drafts (low accuracy).
+**Tool resolution:** `resolve_tools(category_tools)` maps names from `CATEGORY_CONFIG.tools` to callables.
 
 ### Agno SDK Patterns (verified against SDK 2.4.8)
 
 ```python
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
-from agno.models.anthropic import Claude
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pineconedb import PineconeDb
 
-# Knowledge via PineconeDb (NOT "PineconeKnowledge" — that class doesn't exist)
-# For standard 1536-dimensional embeddings
+# Knowledge via PineconeDb (NOT "PineconeKnowledge" — doesn't exist)
 vector_db = PineconeDb(
-    name="support-examples",
-    dimension=1536,
-    metric="cosine",
+    name="support-examples", dimension=1536, metric="cosine",
     spec={"serverless": {"cloud": "aws", "region": "us-east-1"}},
-    api_key=settings.pinecone_api_key,
-    namespace="shipping",
+    api_key=settings.pinecone_api_key, namespace="shipping",
     use_hybrid_search=True,
 )
 knowledge = Knowledge(vector_db=vector_db)
 
-# For custom embedding dimensions (e.g., analytics uses 1024)
-from agno.knowledge.embedder.openai import OpenAIEmbedder
-embedder = OpenAIEmbedder(id="text-embedding-3-large", dimensions=1024)
-vector_db = PineconeDb(
-    name="support-examples",
-    dimension=1024,
-    namespace="analytics-knowledge",
-    embedder=embedder,  # MUST explicitly set to match index dimension
-    use_hybrid_search=True,
-)
-knowledge = Knowledge(vector_db=vector_db)
-
-# Basic agent
 agent = Agent(
     name="support_shipping",
     model=OpenAIChat(id="gpt-5.1"),
     instructions=["...loaded from DB..."],
     knowledge=knowledge,
     search_knowledge=True,  # MUST set explicitly
-    tools=[get_subscription, track_package],  # resolved from TOOL_REGISTRY
+    tools=[get_subscription, track_package],
 )
 
-# Reasoning effort — passed to OpenAIChat() constructor
-model = OpenAIChat(id="gpt-5.1", reasoning_effort="medium")  # "none" | "low" | "medium" | "high"
-agent = Agent(model=model, instructions=["..."])
+# Reasoning effort — on OpenAIChat(), NOT Agent()
+model = OpenAIChat(id="gpt-5.1", reasoning_effort="medium")
 
 # Structured output — use output_schema (NOT response_model)
 agent = Agent(model=OpenAIChat(id="gpt-5.1"), output_schema=RouterOutput)
 
 # Run agent — async
-response = await agent.arun(message)  # response.content has the text or Pydantic object
-
-# Tool with HITL approval (future Phase 6)
-from agno.tools import tool
-@tool(requires_confirmation=True)  # NOT needs_approval
-def pause_subscription(email: str, months: int) -> str: ...
+response = await agent.arun(message)  # response.content has text or Pydantic object
 ```
 
-**Important gotchas:**
+**Gotchas:**
 - `reasoning_effort` is set on `OpenAIChat()`, NOT on `Agent()`
-- `arun()` takes a single string, not messages list. For multi-turn, prepend history manually or use `db=PostgresDb()` + `add_history_to_context=True` (currently avoided due to SDK bugs #2497, #2570)
+- `arun()` takes a single string, not messages list
 - `search_knowledge=True` must be set explicitly on Agent
 - Tool docstrings + type hints define the schema for LLM tool calling
-- Agno doesn't have a generic custom guardrail base class. Safety checks are implemented as pre/post-processing functions called explicitly in the pipeline (see `guardrails/safety.py`)
-- **Pinecone dimension mismatch:** The `dimension` parameter on `PineconeDb()` only validates index dimension — it does NOT control embedding model dimension. Always explicitly set `embedder=OpenAIEmbedder(dimensions=N)` if your index uses non-default dimensions (see Pinecone section above)
+- Agno doesn't have a generic custom guardrail base class — safety checks are explicit pre/post-processing
+- Pinecone dimension mismatch: always set `embedder=OpenAIEmbedder(dimensions=N)` if index uses non-default dimensions
 
 ### Response Assembly (agents/response_assembler.py)
 
-Email-style formatting for consistency with n8n legacy pipeline:
+Email-style HTML formatting: `<div>Greeting</div> + <div>Opener</div> + <div>Body</div> + <div>Closer</div> + <div>Sign-off</div>`
 
-```python
-from agents.response_assembler import assemble_response
-
-html_response = assemble_response(
-    agent_body="Here's your tracking info...",
-    customer_name="Sarah",  # from name_extractor or "Valued Customer"
-    category="shipping_or_delivery_question"
-)
-```
-
-**Structure:** `<div>Greeting</div> + <div>Opener</div> + <div>Body</div> + <div>Closer</div> + <div>Sign-off</div>`
-
-**Name extraction:** Fast path uses `contact_name` from Chatwoot. LLM path (GPT-5-mini) extracts from message signature. Fallback: "Valued Customer".
-
-**Cancel link injection:** For retention categories, `generate_cancel_link(email)` → encrypted link appended to closer div.
+Name extraction: fast path uses `contact_name` from Chatwoot, LLM path (GPT-5-mini) extracts from message signature, fallback: "Valued Customer".
 
 ## Environment Variables
 
 Required in `.env` (see `.env.example`):
 ```
-OPENAI_API_KEY, ANTHROPIC_API_KEY (optional for now)
+OPENAI_API_KEY, ANTHROPIC_API_KEY (optional)
 SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 PINECONE_API_KEY, PINECONE_INDEX=support-examples
 LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST
 CANCEL_LINK_PASSWORD
+CHATWOOT_URL, CHATWOOT_API_TOKEN, CHATWOOT_ACCOUNT_ID, CHATWOOT_SECRET_KEY_BASE
+CHATWOOT_DB_PASSWORD, CHATWOOT_REDIS_PASSWORD, CHATWOOT_FRONTEND_URL
+DASH_DB_PASSWORD (Dash PgVector DB), AGNO_API_KEY (optional, Control Plane)
+USE_MOCK_APIS=true (default, set false for real external APIs)
+NEXT_PUBLIC_API_URL=http://ai-engine:8000 (Docker only, dev auto-proxies to localhost:8000)
 ```
-
-Phase 2 (active): `CHATWOOT_URL`, `CHATWOOT_API_TOKEN`, `CHATWOOT_ACCOUNT_ID`, `CHATWOOT_SECRET_KEY_BASE`, `CHATWOOT_DB_PASSWORD`, `CHATWOOT_REDIS_PASSWORD`, `CHATWOOT_FRONTEND_URL`
-
-Phase 3+ adds: `N8N_URL`, `N8N_API_KEY`
-
-Phase 5 (analytics): `ANALYTICS_DB_URL` (read-only PostgreSQL connection), `AGNO_API_KEY` (optional, for AgentOS Control Plane sync)
 
 ## Reference Documents
 
@@ -442,16 +387,20 @@ Phase 5 (analytics): `ANALYTICS_DB_URL` (read-only PostgreSQL connection), `AGNO
 - [docs/05-DATABASE-MIGRATIONS.md](docs/05-DATABASE-MIGRATIONS.md) — New tables and migration SQL
 - [docs/07-LANGFUSE-GUIDE.md](docs/07-LANGFUSE-GUIDE.md) — Langfuse observability setup (Russian)
 - [docs/08-COPILOTKIT-GENERATIVE-UI.md](docs/08-COPILOTKIT-GENERATIVE-UI.md) — Phase 6: CopilotKit + AG-UI protocol for HITL forms (Russian)
-- [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — Phase 6-10 roadmap + Agno Learning Machine analysis: personalization vs self-improvement, dual-track strategy (Russian)
-- [docs/LH-COMPANY.md](docs/LH-COMPANY.md) — Lev Haolam company overview, business model, mission, target audience (Russian) — useful context when tuning tone, understanding retention scenarios, and customer expectations
-- [.agents/skills/agno-sdk/SKILL.md](.agents/skills/agno-sdk/SKILL.md) — Project-specific Agno patterns, gotchas, tool registry, multi-turn implementation details
+- [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md) — AI agent best practices
+- [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — Phase 6-10 roadmap + Agno Learning Machine analysis (Russian)
+- [docs/LH-COMPANY.md](docs/LH-COMPANY.md) — Lev Haolam company overview (Russian) — useful for tone and retention scenarios
+- [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md) — 40-minute demo presentation script
+- [docs/DEMO-QA.md](docs/DEMO-QA.md) — 20 prepared demo Q&A answers
+- [docs/DEMO-FINAL-CHECKLIST.md](docs/DEMO-FINAL-CHECKLIST.md) — Production readiness gate
+- [.agents/skills/agno-sdk/SKILL.md](.agents/skills/agno-sdk/SKILL.md) — Project-specific Agno patterns and gotchas
 
 ## Workflow: After Every Code Change
 
 After creating or modifying any file, ALWAYS perform these steps automatically (do not wait for user to ask):
 
 1. **Verify imports** — check that all imports resolve correctly
-2. **Docker build check** — run `docker compose build ai-engine` to confirm the image builds without errors
+2. **Docker build check** — run `docker compose build ai-engine` (and `frontend` if frontend changed) to confirm the image builds without errors
 3. **Run tests** — `docker compose exec ai-engine pytest tests/ -v` (if tests exist for the changed code)
 4. **Commit** — if everything passes, create a git commit with a descriptive message summarizing the change
 
@@ -459,4 +408,4 @@ If any step fails — fix the issue first, then re-run the checks. Never commit 
 
 ## Deployment
 
-Single server (same machine as n8n at n8n.diconsulting.pro). All services in one Docker Compose network (`ai-platform-net`). Exposed externally: `ai-engine:8000`, `chatwoot:3010`, `langfuse:3100` (internal only).
+Single server (same machine as n8n at n8n.diconsulting.pro). All services in one Docker Compose network (`ai-platform-net`). Exposed externally: `ai-engine:8000`, `frontend:3003`, `chatwoot:3010`, `langfuse:3100` (internal only).

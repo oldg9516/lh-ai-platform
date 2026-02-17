@@ -1,0 +1,36 @@
+{
+  "table_name": "orders",
+  "table_description": "Subscription boxes and one-time orders. 1826 records. Links to customers and subscriptions via FKs.",
+  "use_cases": [
+    "Customer lifetime value (LTV) calculation",
+    "Order volume and revenue trends",
+    "Shipping and delivery analysis",
+    "Box sequence tracking"
+  ],
+  "data_quality_notes": [
+    "order_type distinguishes 'subscription' (recurring) from one-time purchases",
+    "price is NUMERIC — use SUM(price) for LTV, AVG(price) for AOV",
+    "subscription_id is nullable (one-time orders have no subscription)",
+    "tracking_number links to tracking_events table",
+    "payment_date_actual is TIMESTAMPTZ, payment_date_planned is DATE"
+  ],
+  "table_columns": [
+    {"name": "id", "type": "bigserial", "description": "Primary key"},
+    {"name": "subscription_id", "type": "bigint", "description": "FK to subscriptions(id), nullable for one-time orders"},
+    {"name": "customer_id", "type": "bigint", "description": "FK to customers(id)"},
+    {"name": "order_type", "type": "text", "description": "subscription or one_time"},
+    {"name": "box_sequence", "type": "integer", "description": "Box number in subscription sequence"},
+    {"name": "box_name", "type": "text", "description": "Name of the box"},
+    {"name": "sku", "type": "text", "description": "Product SKU"},
+    {"name": "price", "type": "numeric", "description": "Order price"},
+    {"name": "price_currency", "type": "text", "description": "Currency code"},
+    {"name": "payment_date_planned", "type": "date", "description": "Planned payment date"},
+    {"name": "payment_date_actual", "type": "timestamptz", "description": "Actual payment timestamp"},
+    {"name": "shipping_date", "type": "timestamptz", "description": "When order was shipped"},
+    {"name": "tracking_number", "type": "text", "description": "Shipping tracking number"},
+    {"name": "invoice", "type": "text", "description": "Invoice reference"},
+    {"name": "order_status", "type": "text", "description": "Order status"},
+    {"name": "promo_code", "type": "text", "description": "Applied promo code"},
+    {"name": "created_at", "type": "timestamptz", "description": "Record creation timestamp"}
+  ]
+}

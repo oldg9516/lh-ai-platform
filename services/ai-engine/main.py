@@ -83,9 +83,11 @@ app = FastAPI(
 # Include API routes
 from api.routes import router as api_router  # noqa: E402
 from api.copilot import router as copilot_router  # noqa: E402
+from api.dash_copilot import router as dash_copilot_router  # noqa: E402
 
 app.include_router(api_router, prefix="/api")
 app.include_router(copilot_router, prefix="/api/copilot", tags=["copilot"])
+app.include_router(dash_copilot_router, prefix="/api/dash-copilot", tags=["dash"])
 
 # Serve test chat UI
 from pathlib import Path  # noqa: E402

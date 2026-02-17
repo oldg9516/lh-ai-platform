@@ -1,0 +1,91 @@
+{
+  "metrics": [
+    {
+      "name": "Resolution Rate",
+      "definition": "Percentage of chat sessions resolved automatically by AI without human intervention",
+      "table": "chat_sessions",
+      "calculation": "COUNT(*) FILTER (WHERE eval_decision = 'send') * 100.0 / COUNT(*)"
+    },
+    {
+      "name": "Escalation Rate",
+      "definition": "Percentage of sessions escalated to human agents",
+      "table": "chat_sessions",
+      "calculation": "COUNT(*) FILTER (WHERE eval_decision = 'escalate') * 100.0 / COUNT(*)"
+    },
+    {
+      "name": "Draft Rate",
+      "definition": "Percentage of sessions where AI response requires human review before sending",
+      "table": "chat_sessions",
+      "calculation": "COUNT(*) FILTER (WHERE eval_decision = 'draft') * 100.0 / COUNT(*)"
+    },
+    {
+      "name": "Average Response Time",
+      "definition": "Average time for AI to generate first response in milliseconds",
+      "table": "chat_sessions",
+      "calculation": "AVG(first_response_time_ms)"
+    },
+    {
+      "name": "Customer Lifetime Value (LTV)",
+      "definition": "Total revenue from a customer across all orders",
+      "table": "orders",
+      "calculation": "SUM(price) grouped by customer_id"
+    },
+    {
+      "name": "Active Subscription Rate",
+      "definition": "Percentage of subscriptions currently active",
+      "table": "subscriptions",
+      "calculation": "COUNT(*) FILTER (WHERE status = 'Active') * 100.0 / COUNT(*)"
+    },
+    {
+      "name": "Churn Rate",
+      "definition": "Percentage of subscriptions that have been cancelled",
+      "table": "subscriptions",
+      "calculation": "COUNT(*) FILTER (WHERE status = 'Cancelled') * 100.0 / COUNT(*)"
+    },
+    {
+      "name": "Average Order Value (AOV)",
+      "definition": "Average price per order across all orders",
+      "table": "orders",
+      "calculation": "AVG(price)"
+    }
+  ],
+  "business_rules": [
+    "Subscription status values are CAPITALIZED: 'Active', 'Paused', 'Cancelled'",
+    "Frequency values are CAPITALIZED: 'Monthly', 'Quarterly', 'Semi-Annually'",
+    "eval_decision values are LOWERCASE: 'send', 'draft', 'escalate'",
+    "urgency values are LOWERCASE: 'low', 'medium', 'high'",
+    "Customer email is the primary identifier — always use LOWER(email) for case-insensitive comparison",
+    "Prices are in USD unless price_currency says otherwise",
+    "chat_sessions.channel values: 'widget', 'email', 'api'",
+    "10 primary_category values: shipping_or_delivery_question, payment_question, frequency_change_request, skip_or_pause_request, recipient_or_address_change, customization_request, damaged_or_leaking_item_report, gratitude, retention_primary_request, retention_repeated_request",
+    "tracking_events.history is a JSONB array — use jsonb_array_elements() to expand",
+    "orders.order_type values: 'subscription' (recurring box) and other types for one-time purchases"
+  ],
+  "common_gotchas": [
+    {
+      "issue": "Subscription status is CAPITALIZED, eval_decision is LOWERCASE",
+      "tables_affected": ["subscriptions", "chat_sessions"],
+      "solution": "Use status = 'Active' for subscriptions but eval_decision = 'send' for sessions"
+    },
+    {
+      "issue": "Customer join requires knowing the FK chain",
+      "tables_affected": ["customers", "subscriptions", "orders"],
+      "solution": "customers.id = subscriptions.customer_id = orders.customer_id. Use orders.subscription_id to link orders to specific subscriptions."
+    },
+    {
+      "issue": "chat_messages.session_id is TEXT not UUID",
+      "tables_affected": ["chat_sessions", "chat_messages"],
+      "solution": "Join on session_id (TEXT): chat_sessions.session_id = chat_messages.session_id"
+    },
+    {
+      "issue": "JSONB history field in tracking_events",
+      "tables_affected": ["tracking_events"],
+      "solution": "Use jsonb_array_elements(history) to expand tracking history. Each element has status, location, timestamp."
+    },
+    {
+      "issue": "cost_usd has high decimal precision",
+      "tables_affected": ["chat_messages", "agent_traces"],
+      "solution": "Use ROUND(cost_usd, 4) for display. Sum costs per session by joining chat_messages on session_id."
+    }
+  ]
+}

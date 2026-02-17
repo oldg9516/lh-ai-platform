@@ -1,0 +1,49 @@
+{
+  "table_name": "chat_sessions",
+  "table_description": "AI support chat sessions with classification, eval decisions, and resolution tracking. Primary table for support analytics.",
+  "use_cases": [
+    "Resolution rate (auto-sent vs drafted vs escalated)",
+    "Category distribution and trends",
+    "Response time analysis",
+    "Customer satisfaction (CSAT) metrics",
+    "Outstanding case detection"
+  ],
+  "data_quality_notes": [
+    "eval_decision values are LOWERCASE: 'send', 'draft', 'escalate'",
+    "primary_category values: shipping_or_delivery_question, payment_question, frequency_change_request, skip_or_pause_request, recipient_or_address_change, customization_request, damaged_or_leaking_item_report, gratitude, retention_primary_request, retention_repeated_request",
+    "urgency values are LOWERCASE: 'low', 'medium', 'high'",
+    "channel values: 'widget', 'email', 'api'",
+    "session_id is TEXT (not UUID) — used to join with chat_messages"
+  ],
+  "table_columns": [
+    {"name": "id", "type": "uuid", "description": "Primary key (UUID)"},
+    {"name": "session_id", "type": "text", "description": "Unique session identifier (TEXT, not UUID)"},
+    {"name": "conversation_id", "type": "text", "description": "External conversation ID (Chatwoot)"},
+    {"name": "channel", "type": "text", "description": "widget, email, or api"},
+    {"name": "customer_email", "type": "text", "description": "Customer email address"},
+    {"name": "customer_name", "type": "text", "description": "Customer name"},
+    {"name": "customer_id", "type": "text", "description": "Customer ID reference"},
+    {"name": "subscription_id", "type": "text", "description": "Subscription ID reference"},
+    {"name": "primary_category", "type": "text", "description": "Main support category (10 values)"},
+    {"name": "secondary_category", "type": "text", "description": "Secondary category"},
+    {"name": "urgency", "type": "text", "description": "low, medium, or high"},
+    {"name": "language", "type": "text", "description": "Detected language"},
+    {"name": "status", "type": "text", "description": "active, resolved, or escalated"},
+    {"name": "assigned_to", "type": "text", "description": "Assigned human agent"},
+    {"name": "escalation_reason", "type": "text", "description": "Why session was escalated"},
+    {"name": "eval_decision", "type": "text", "description": "send, draft, or escalate"},
+    {"name": "eval_confidence", "type": "text", "description": "Eval gate confidence level"},
+    {"name": "is_outstanding", "type": "boolean", "description": "Flagged as outstanding issue"},
+    {"name": "outstanding_trigger", "type": "text", "description": "What triggered outstanding flag"},
+    {"name": "first_response_time_ms", "type": "integer", "description": "Time to first AI response (ms)"},
+    {"name": "total_messages", "type": "integer", "description": "Total messages in session"},
+    {"name": "ai_messages", "type": "integer", "description": "AI-generated messages"},
+    {"name": "human_messages", "type": "integer", "description": "Human messages"},
+    {"name": "resolution_time_seconds", "type": "integer", "description": "Time to resolution (seconds)"},
+    {"name": "created_at", "type": "timestamptz", "description": "Session creation timestamp"},
+    {"name": "updated_at", "type": "timestamptz", "description": "Last update timestamp"},
+    {"name": "resolved_at", "type": "timestamptz", "description": "When session was resolved"},
+    {"name": "csat_score", "type": "integer", "description": "Customer satisfaction score"},
+    {"name": "csat_comment", "type": "text", "description": "CSAT feedback comment"}
+  ]
+}

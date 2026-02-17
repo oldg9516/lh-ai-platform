@@ -1,0 +1,32 @@
+{
+  "table_name": "chat_messages",
+  "table_description": "Individual messages within chat sessions. Contains customer and AI messages with cost and token tracking.",
+  "use_cases": [
+    "AI cost analysis per session or category",
+    "Token usage patterns",
+    "Model usage distribution",
+    "Message volume trends"
+  ],
+  "data_quality_notes": [
+    "session_id is TEXT — join with chat_sessions.session_id (not .id)",
+    "role values: 'user' (customer), 'assistant' (AI)",
+    "cost_usd is NUMERIC(10,6) — use ROUND(cost_usd, 4) for display",
+    "tools_used is JSONB array of tool names invoked in this message",
+    "actions_taken and actions_pending are JSONB"
+  ],
+  "table_columns": [
+    {"name": "id", "type": "uuid", "description": "Primary key (UUID)"},
+    {"name": "session_id", "type": "text", "description": "FK to chat_sessions.session_id (TEXT)"},
+    {"name": "role", "type": "text", "description": "user or assistant"},
+    {"name": "content", "type": "text", "description": "Message text content"},
+    {"name": "model_used", "type": "text", "description": "LLM model used (e.g., gpt-5.1)"},
+    {"name": "reasoning_effort", "type": "text", "description": "Reasoning effort level"},
+    {"name": "tools_used", "type": "jsonb", "description": "Array of tool names used"},
+    {"name": "processing_time_ms", "type": "integer", "description": "Processing time in ms"},
+    {"name": "token_count", "type": "integer", "description": "Total tokens used"},
+    {"name": "cost_usd", "type": "numeric(10,6)", "description": "Cost in USD"},
+    {"name": "actions_taken", "type": "jsonb", "description": "Actions completed"},
+    {"name": "actions_pending", "type": "jsonb", "description": "Actions awaiting approval"},
+    {"name": "created_at", "type": "timestamptz", "description": "Message timestamp"}
+  ]
+}

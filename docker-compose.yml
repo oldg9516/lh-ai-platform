@@ -8,6 +8,10 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      - LEARNING_DB_URL=postgresql+psycopg://postgres:${SUPABASE_DB_PASSWORD}@supabase-db:5432/postgres
+      - LEARNING_ENABLED=${LEARNING_ENABLED:-false}
+      - LEARNING_FEW_SHOT_ENABLED=${LEARNING_FEW_SHOT_ENABLED:-false}
     networks:
       - ai-platform-net
     depends_on:
@@ -31,6 +35,7 @@ services:
       - "3003:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://ai-engine:8000
+      - DASH_API_URL=http://dash:9000
       - NODE_ENV=production
     networks:
       - ai-platform-net
@@ -44,33 +49,52 @@ services:
       retries: 3
     restart: unless-stopped
 
-  analytics:
+  # --- Dash Analytics Agent (replaces analytics service) ---
+
+  dash-db:
+    image: pgvector/pgvector:pg17
+    container_name: dash-db
+    restart: always
+    environment:
+      POSTGRES_USER: dash
+      POSTGRES_PASSWORD: ${DASH_DB_PASSWORD:-dash}
+      POSTGRES_DB: dash
+    volumes:
+      - dash_db_data:/var/lib/postgresql/data
+    networks:
+      - ai-platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dash"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  dash:
     build:
       context: .
-      dockerfile: services/analytics/Dockerfile
-    container_name: analytics
+      dockerfile: services/dash/Dockerfile
+    container_name: dash
     ports:
       - "9000:9000"
     environment:
-      - ANALYTICS_DB_URL=postgresql://analytics_readonly:analytics_pass@supabase-db:5432/postgres
+      - DB_USER=dash
+      - DB_PASS=${DASH_DB_PASSWORD:-dash}
+      - DB_HOST=dash-db
+      - DB_PORT=5432
+      - DB_DATABASE=dash
+      - DATA_DB_URL=postgresql+psycopg://analytics_readonly:analytics_pass@supabase-db:5432/postgres
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
-      - PINECONE_INDEX=${PINECONE_INDEX:-support-examples}
-      # Separate Langfuse project for analytics
-      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_ANALYTICS_PUBLIC_KEY}
-      - LANGFUSE_SECRET_KEY=${LANGFUSE_ANALYTICS_SECRET_KEY}
-      - LANGFUSE_HOST=http://langfuse-web:3000
-      - DEBUG=${DEBUG:-false}
+      - RUNTIME_ENV=${RUNTIME_ENV:-dev}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
-      supabase-db:
+      dash-db:
         condition: service_healthy
-      langfuse-web:
+      supabase-db:
         condition: service_healthy
     networks:
       - ai-platform-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -444,3 +468,4 @@ volumes:
   langfuse_minio_data:
   chatwoot_postgres_data:
   chatwoot_redis_data:
+  dash_db_data:

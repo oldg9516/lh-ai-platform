@@ -1,0 +1,41 @@
+{
+  "table_name": "subscriptions",
+  "table_description": "Active, paused, and cancelled subscriptions for Lev Haolam monthly boxes. 649 records. Links to customers via customer_id FK.",
+  "use_cases": [
+    "Subscription status analysis (Active, Paused, Cancelled)",
+    "Revenue analysis by frequency and pricing",
+    "Churn and pause pattern analysis",
+    "Payment method distribution"
+  ],
+  "data_quality_notes": [
+    "status values are CAPITALIZED: 'Active', 'Paused', 'Cancelled'",
+    "frequency values are CAPITALIZED: 'Monthly', 'Quarterly', 'Semi-Annually'",
+    "first_box_price and regular_box_price are NUMERIC — promotional vs recurring price",
+    "pause_end_date is TIMESTAMPTZ, NULL when subscription is not paused",
+    "customer_id is FK to customers(id) with ON DELETE CASCADE"
+  ],
+  "table_columns": [
+    {"name": "id", "type": "bigserial", "description": "Primary key"},
+    {"name": "customer_id", "type": "bigint", "description": "FK to customers(id)"},
+    {"name": "customer_number", "type": "text", "description": "Customer number (NOT NULL)"},
+    {"name": "status", "type": "text", "description": "Active, Paused, or Cancelled"},
+    {"name": "frequency", "type": "text", "description": "Monthly, Quarterly, or Semi-Annually"},
+    {"name": "start_date", "type": "timestamptz", "description": "Subscription start date"},
+    {"name": "first_box_price", "type": "numeric", "description": "Promotional first box price"},
+    {"name": "regular_box_price", "type": "numeric", "description": "Regular recurring price"},
+    {"name": "price_currency", "type": "text", "description": "Currency code (default USD)"},
+    {"name": "billing_day", "type": "integer", "description": "Day of month for billing"},
+    {"name": "no_alcohol", "type": "boolean", "description": "Alcohol-free preference"},
+    {"name": "no_honey", "type": "boolean", "description": "Honey-free preference"},
+    {"name": "pause_end_date", "type": "timestamptz", "description": "When pause ends (NULL if not paused)"},
+    {"name": "payer_name", "type": "text", "description": "Name on payment method"},
+    {"name": "payer_email", "type": "text", "description": "Email on payment method"},
+    {"name": "payment_method", "type": "text", "description": "Payment method type"},
+    {"name": "payment_method_id", "type": "text", "description": "Payment method ID"},
+    {"name": "payment_expire_date", "type": "text", "description": "Payment expiration date"},
+    {"name": "next_payment_date", "type": "date", "description": "Next scheduled payment"},
+    {"name": "next_box_sequence", "type": "integer", "description": "Next box number in sequence"},
+    {"name": "created_at", "type": "timestamptz", "description": "Record creation timestamp"},
+    {"name": "updated_at", "type": "timestamptz", "description": "Last update timestamp"}
+  ]
+}

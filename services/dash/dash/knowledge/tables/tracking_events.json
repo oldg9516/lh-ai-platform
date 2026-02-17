@@ -1,0 +1,28 @@
+{
+  "table_name": "tracking_events",
+  "table_description": "Delivery tracking data from carriers. 268 records. Links to orders via order_id FK.",
+  "use_cases": [
+    "Delivery status overview by carrier",
+    "Delivery success/failure rates",
+    "Shipping timeline analysis"
+  ],
+  "data_quality_notes": [
+    "tracking_number is UNIQUE — one entry per shipment",
+    "history is a JSONB array — use jsonb_array_elements(history) to expand",
+    "Each history element has status, location, timestamp fields",
+    "raw_data is full carrier response JSONB — avoid selecting in queries",
+    "order_id is nullable FK to orders(id)"
+  ],
+  "table_columns": [
+    {"name": "id", "type": "bigserial", "description": "Primary key"},
+    {"name": "tracking_number", "type": "text", "description": "Unique tracking number"},
+    {"name": "order_id", "type": "bigint", "description": "FK to orders(id), nullable"},
+    {"name": "carrier", "type": "text", "description": "Shipping carrier name"},
+    {"name": "delivery_status", "type": "text", "description": "Current delivery status"},
+    {"name": "delivery_date", "type": "timestamptz", "description": "Actual delivery date"},
+    {"name": "history", "type": "jsonb", "description": "Array of tracking events [{status, location, timestamp}]"},
+    {"name": "raw_data", "type": "jsonb", "description": "Full carrier API response (avoid in queries)"},
+    {"name": "created_at", "type": "timestamptz", "description": "Record creation timestamp"},
+    {"name": "updated_at", "type": "timestamptz", "description": "Last update timestamp"}
+  ]
+}

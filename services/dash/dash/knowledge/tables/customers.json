@@ -1,0 +1,32 @@
+{
+  "table_name": "customers",
+  "table_description": "Customer profiles for Lev Haolam subscribers. 962 records imported from production. Contains contact info and shipping address.",
+  "use_cases": [
+    "Customer lookup by email or name",
+    "Geographic distribution analysis",
+    "Customer count and growth metrics"
+  ],
+  "data_quality_notes": [
+    "email is UNIQUE and NOT NULL — primary identifier for customer lookup",
+    "external_id maps to the CRM system (integer, may be NULL)",
+    "Some address fields (street, city, state, zip_code, country) may be NULL",
+    "customer_number is a TEXT identifier from the subscription system",
+    "Use LOWER(email) for case-insensitive comparisons"
+  ],
+  "table_columns": [
+    {"name": "id", "type": "bigserial", "description": "Primary key, auto-increment"},
+    {"name": "external_id", "type": "integer", "description": "External CRM ID (nullable)"},
+    {"name": "customer_number", "type": "text", "description": "Customer number from subscription system"},
+    {"name": "email", "type": "text", "description": "Customer email (UNIQUE, NOT NULL)"},
+    {"name": "name", "type": "text", "description": "Customer full name"},
+    {"name": "phone", "type": "text", "description": "Phone number (nullable)"},
+    {"name": "street", "type": "text", "description": "Street address"},
+    {"name": "address_line_2", "type": "text", "description": "Apartment/suite (nullable)"},
+    {"name": "city", "type": "text", "description": "City"},
+    {"name": "state", "type": "text", "description": "State/province"},
+    {"name": "zip_code", "type": "text", "description": "ZIP/postal code"},
+    {"name": "country", "type": "text", "description": "Country"},
+    {"name": "created_at", "type": "timestamptz", "description": "Record creation timestamp"},
+    {"name": "updated_at", "type": "timestamptz", "description": "Last update timestamp"}
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "table_name": "tool_executions",
+  "table_description": "Tool invocation records with HITL approval tracking. Covers both read-only and write tools.",
+  "use_cases": [
+    "Tool usage frequency analysis",
+    "HITL approval/cancellation rates",
+    "Tool execution duration and error rates",
+    "Write tool safety auditing"
+  ],
+  "data_quality_notes": [
+    "session_id is TEXT FK to chat_sessions.session_id",
+    "requires_approval is boolean — true for write tools (HITL)",
+    "approval_status values: 'approved', 'cancelled', 'pending'",
+    "tool_input and tool_output are JSONB",
+    "status values: 'pending', 'executing', 'success', 'error'"
+  ],
+  "table_columns": [
+    {"name": "id", "type": "uuid", "description": "Primary key"},
+    {"name": "session_id", "type": "text", "description": "FK to chat_sessions.session_id"},
+    {"name": "trace_id", "type": "uuid", "description": "FK to agent_traces.id"},
+    {"name": "tool_name", "type": "text", "description": "Name of the tool executed"},
+    {"name": "tool_input", "type": "jsonb", "description": "Tool input parameters"},
+    {"name": "tool_output", "type": "jsonb", "description": "Tool output/result"},
+    {"name": "requires_approval", "type": "boolean", "description": "Whether HITL approval needed"},
+    {"name": "approval_status", "type": "text", "description": "approved, cancelled, or pending"},
+    {"name": "approved_at", "type": "timestamptz", "description": "When approved"},
+    {"name": "approved_by", "type": "text", "description": "Who approved"},
+    {"name": "status", "type": "text", "description": "pending, executing, success, error"},
+    {"name": "duration_ms", "type": "integer", "description": "Execution duration in ms"},
+    {"name": "error_message", "type": "text", "description": "Error details if failed"},
+    {"name": "created_at", "type": "timestamptz", "description": "Execution timestamp"}
+  ]
+}

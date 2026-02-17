@@ -1,0 +1,35 @@
+{
+  "table_name": "agent_traces",
+  "table_description": "Agent execution logs with model, token, cost, and duration tracking per step.",
+  "use_cases": [
+    "Agent performance profiling",
+    "Cost breakdown by agent type",
+    "Error rate analysis",
+    "Execution duration trends"
+  ],
+  "data_quality_notes": [
+    "session_id is TEXT FK to chat_sessions.session_id",
+    "message_id is UUID FK to chat_messages.id",
+    "input_data and output_data are JSONB — avoid in aggregations",
+    "status values: 'success', 'error'",
+    "cost_usd is NUMERIC(10,6)"
+  ],
+  "table_columns": [
+    {"name": "id", "type": "uuid", "description": "Primary key"},
+    {"name": "session_id", "type": "text", "description": "FK to chat_sessions.session_id"},
+    {"name": "message_id", "type": "uuid", "description": "FK to chat_messages.id"},
+    {"name": "step", "type": "integer", "description": "Step number in execution"},
+    {"name": "agent_name", "type": "text", "description": "Agent name (e.g., Router, Support)"},
+    {"name": "input_data", "type": "jsonb", "description": "Agent input (JSONB)"},
+    {"name": "output_data", "type": "jsonb", "description": "Agent output (JSONB)"},
+    {"name": "model", "type": "text", "description": "LLM model used"},
+    {"name": "reasoning_effort", "type": "text", "description": "Reasoning effort level"},
+    {"name": "tokens_input", "type": "integer", "description": "Input tokens"},
+    {"name": "tokens_output", "type": "integer", "description": "Output tokens"},
+    {"name": "cost_usd", "type": "numeric(10,6)", "description": "Execution cost in USD"},
+    {"name": "duration_ms", "type": "integer", "description": "Execution duration in ms"},
+    {"name": "status", "type": "text", "description": "success or error"},
+    {"name": "error_message", "type": "text", "description": "Error details if failed"},
+    {"name": "created_at", "type": "timestamptz", "description": "Trace timestamp"}
+  ]
+}

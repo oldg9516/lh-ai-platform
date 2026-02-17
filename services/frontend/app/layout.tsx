@@ -1,4 +1,3 @@
-import { Providers } from '@/lib/providers'
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Toaster } from 'sonner'
@@ -15,9 +14,9 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-	title: 'Lev Haolam Support - AI Assistant',
+	title: 'Lev Haolam - AI Platform',
 	description:
-		'AI-powered customer support with Human-in-the-Loop confirmations',
+		'AI-powered customer support and analytics platform',
 }
 
 export default function RootLayout({
@@ -30,7 +29,7 @@ export default function RootLayout({
 			<body
 				className={`${geistSans.variable} ${geistMono.variable} antialiased`}
 			>
-				<Providers>{children}</Providers>
+				{children}
 				<Toaster position="top-right" richColors closeButton />
 			</body>
 		</html>

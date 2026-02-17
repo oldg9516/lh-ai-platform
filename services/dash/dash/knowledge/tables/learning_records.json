@@ -1,0 +1,30 @@
+{
+  "table_name": "learning_records",
+  "table_description": "Agent learning patterns — tracks what the AI has learned from interactions to improve over time.",
+  "use_cases": [
+    "Learning effectiveness analysis",
+    "Category-specific pattern discovery",
+    "Confidence and success rate tracking"
+  ],
+  "data_quality_notes": [
+    "confidence is a NUMERIC value between 0 and 1",
+    "success_rate is a NUMERIC value between 0 and 1",
+    "learning_type classifies the kind of learning",
+    "status tracks if the learning is active"
+  ],
+  "table_columns": [
+    {"name": "id", "type": "uuid", "description": "Primary key"},
+    {"name": "category", "type": "text", "description": "Support category"},
+    {"name": "subcategory", "type": "text", "description": "More specific category"},
+    {"name": "agent_name", "type": "text", "description": "Which agent learned this"},
+    {"name": "learning_type", "type": "text", "description": "Type of learning"},
+    {"name": "trigger_description", "type": "text", "description": "What triggered the learning"},
+    {"name": "learned_pattern", "type": "text", "description": "The pattern that was learned"},
+    {"name": "confidence", "type": "numeric", "description": "Confidence score (0-1)"},
+    {"name": "times_applied", "type": "integer", "description": "How many times applied"},
+    {"name": "success_rate", "type": "numeric", "description": "Success rate (0-1)"},
+    {"name": "status", "type": "text", "description": "Learning status"},
+    {"name": "created_at", "type": "timestamptz", "description": "When learned"},
+    {"name": "last_applied_at", "type": "timestamptz", "description": "Last time applied"}
+  ]
+}

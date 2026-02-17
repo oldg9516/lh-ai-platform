@@ -628,7 +628,74 @@
 - [docs/09-AI-AGENT-BEST-PRACTICES-2026.md](docs/09-AI-AGENT-BEST-PRACTICES-2026.md#priority-3-ai-ops--learning-ongoing)
 - [docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md](docs/10-NEW-PHASES-LEARNING-MACHINE-ANALYSIS.md) — детальный анализ Phase 6-10 + Agno Learning Machine (критические находки: Learning Machine НЕ для self-improvement, dual-track strategy)
 
-### AI Ops Dashboard
+### Phase 9.1: Dual-Track Learning Mechanism ✅ COMPLETE
+
+**Архитектурное решение:** Agno Learning Machine ≠ self-improvement. Это user memory/personalization. Для реального самообучения нужен custom pipeline. Реализован dual-track подход:
+- **Track 1 (Agno LM):** Customer memory — агент помнит клиента между сессиями
+- **Track 2 (Custom):** Correction pipeline — human edits → LLM classification → few-shot injection
+
+#### Track 1: Agno Learning Machine (Customer Memory) ✅
+- [x] `config.py` — 3 feature flags: `LEARNING_ENABLED`, `LEARNING_FEW_SHOT_ENABLED`, `LEARNING_DB_URL`
+- [x] `requirements.txt` — добавлены `sqlalchemy` + `psycopg[binary]` для Agno PostgresDb
+- [x] `agents/support.py` — `create_support_agent()` стал `async`, добавлен Learning Machine:
+  - [x] `PostgresDb(db_url=settings.learning_db_url)` — direct PostgreSQL для Agno LM
+  - [x] `LearningMachine(user_memory=UserMemoryConfig(mode=LearningMode.ALWAYS))`
+  - [x] `user_id=customer_email` — память привязана к клиенту
+  - [x] Feature-flagged: только при `learning_enabled=True` + email + db_url
+- [x] `agents/specialists.py` — `create_specialist_agent()` стал `async`, аналогичные изменения
+- [x] `agents/orchestrator.py` — `_run_agent()` передаёт `customer_email` в обе фабрики + `await`
+
+#### Track 2: Correction Learning Pipeline ✅
+- [x] `learning/__init__.py` — новый пакет
+- [x] `learning/feedback.py` — correction collection + classification:
+  - [x] `CorrectionRecord` model (conversation_id, category, ai_response, human_edit, correction_type)
+  - [x] `CorrectionClassification` model (type: tone/accuracy/safety/completeness)
+  - [x] `save_correction()` — сохранение в `correction_patterns` table
+  - [x] `get_recent_corrections()` — последние N corrections по категории
+  - [x] `classify_correction()` — LLM classifier (GPT-5-mini) для типизации правок
+- [x] `learning/few_shot.py` — few-shot injection:
+  - [x] `build_few_shot_instructions()` — строит блок "LEARNING FROM PAST CORRECTIONS" из recent corrections
+  - [x] Truncation до 200 символов per example (предотвращает instruction bloat)
+  - [x] Injected в `create_support_agent()` и `create_specialist_agent()` (feature-flagged)
+
+#### Chatwoot Correction Webhook ✅
+- [x] `api/routes.py` — обработка `message_updated` events:
+  - [x] Детекция human edits AI ответов
+  - [x] LLM classification → `correction_patterns` table
+  - [x] Feature-flagged: только при `learning_few_shot_enabled=True`
+- [x] `database/queries.py` — 2 новых helper'а:
+  - [x] `get_last_ai_message(session_id)` — последний AI ответ
+  - [x] `get_session_category(session_id)` — категория сессии
+
+#### Database ✅
+- [x] `services/supabase/init/01-schema.sql` — 2 новые таблицы:
+  - [x] `correction_patterns` — human corrections of AI responses (tone, accuracy, safety, completeness)
+  - [x] `instruction_updates` — suggested instruction improvements (pending/approved/deployed)
+
+#### Tests ✅
+- [x] `tests/test_learning_feedback.py` — 9 tests (CorrectionRecord, CorrectionClassification models)
+- [x] `tests/test_learning_few_shot.py` — 8 tests (build_few_shot_instructions, truncation, empty data)
+- [x] `tests/test_learning_integration.py` — 14 tests (feature flags, agent factories, orchestrator email passing)
+- [x] `tests/test_specialists.py` — обновлены на async (9 tests)
+- [x] `tests/test_email_context.py` — обновлены на async (3 tests)
+- [x] `tests/test_chatwoot_webhook.py` — обновлен test_ignores_message_updated → test_processes_message_updated
+- [x] **290+ tests passing** (31 новых learning tests)
+- [x] Commit: `3803393`
+
+#### Feature Flags (все OFF по умолчанию — полная обратная совместимость)
+| Flag | Default | Description |
+|------|---------|-------------|
+| `LEARNING_ENABLED` | false | Agno Learning Machine (customer memory между сессиями) |
+| `LEARNING_FEW_SHOT_ENABLED` | false | Few-shot correction injection в instructions |
+| `LEARNING_DB_URL` | "" | Direct PostgreSQL URL для Agno LM |
+
+### Phase 9.2: Eval-Driven Instruction Updates (TODO)
+- [ ] Auto-detection recurring correction patterns (3+ times per category per week)
+- [ ] `instruction_updates` table population: suggested fixes from pattern analysis
+- [ ] Admin review workflow: pending → approved → deployed
+- [ ] Auto-update `ai_answerer_instructions` upon approval
+
+### AI Ops Dashboard (TODO)
 - [ ] services/analytics/ai_ops.py:
   - [ ] get_failure_patterns() — топ причины draft/escalate
   - [ ] get_knowledge_gaps() — вопросы с низкой accuracy
@@ -644,24 +711,7 @@
 - [ ] Alerts в Slack (#ai-ops channel)
 - [ ] Weekly AI Performance Report (automated)
 
-### Feedback Loop
-- [ ] learning/feedback.py:
-  - [ ] collect_human_edit() — когда human редактирует AI ответ
-  - [ ] classify_edit() — tone, accuracy, safety, completeness
-  - [ ] is_recurring_pattern() — детекция паттернов ошибок
-  - [ ] generate_prompt_update() — предложения по обновлению промптов
-- [ ] Chatwoot integration: hook на human edits → feedback collection
-- [ ] Prompt versioning (v1, v2, ...) в ai_answerer_instructions
-- [ ] A/B testing prompts (старая vs новая версия на 50/50 трафика)
-
-### Agno Learning Machine
-- [ ] Enable Learning Machine для tools:
-  - [ ] learning = LearningMachine(db=get_postgres_db(), scope="support_tools")
-  - [ ] agent = Agent(..., learning=learning, learn_from_errors=True)
-- [ ] learning_records таблица: population с real data
-- [ ] Learning dashboard: какие ошибки исправлялись, как часто
-
-### Continuous Evaluation
+### Continuous Evaluation (TODO)
 - [ ] Auto-eval pipeline (daily):
   - [ ] Run full eval на golden dataset (338 items)
   - [ ] Compare с baseline scores
