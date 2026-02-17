@@ -622,6 +622,50 @@
 
 ---
 
+## Phase 8.5: Dash Analytics Agent + CopilotKit Generative UI ✅ COMPLETE
+
+Replaces custom analytics service (Phase 5) with Agno Dash self-learning data agent. Adds CopilotKit Generative UI for readable markdown/table rendering.
+
+### Dash Analytics Agent ✅
+- [x] `services/dash/` — 29 files, Agno Dash-based self-learning data agent:
+  - [x] `dash/agent.py` — `OpenAIResponses("gpt-5.2")` + `LearningMachine(mode=LearningMode.AGENTIC)`
+  - [x] `dash/context/semantic_model.py` — 9 table schema JSONs loaded into system prompt
+  - [x] `dash/context/business_rules.py` — metrics definitions, data quality gotchas, capitalization rules
+  - [x] `dash/knowledge/` — table schemas (9 JSONs) + business rules + validated SQL patterns
+  - [x] `dash/tools/introspect.py` — `introspect_schema` tool for live DDL inspection
+  - [x] `dash/tools/save_query.py` — save validated queries to knowledge base
+  - [x] `main.py` — AgentOS app with `_wait_for_db()` retry loop for container startup
+  - [x] `scripts/load_knowledge.py` — bulk load knowledge via `Knowledge.insert()`
+- [x] Dual DB architecture:
+  - [x] `dash-db` (PgVector) — agent state, knowledge base, learnings
+  - [x] Supabase (read-only via `analytics_readonly` user) — customer data queries via SQLTools
+- [x] Docker: `dash` + `dash-db` containers replace old `analytics` container
+- [x] Health check: `GET /health` → 200 OK
+- [x] API: `POST /agents/dash/runs` (SSE streaming) — AgentOS auto-generated endpoints
+- [x] Knowledge loaded: 9 table schemas + 1 rule set + 1 query file = 11 documents
+
+### CopilotKit Generative UI for Dash ✅
+- [x] AG-UI adapter endpoint (`services/ai-engine/api/dash_copilot.py`):
+  - [x] Receives AG-UI requests from CopilotKit
+  - [x] Forwards to Dash AgentOS via httpx streaming
+  - [x] Translates `RunContent` events → `TextMessageContentEvent` (AG-UI protocol)
+  - [x] Protocol method handling (`info`, `agent/connect`)
+- [x] CopilotKit multi-agent routing:
+  - [x] `dash` HttpAgent registered in `route.ts` alongside `default` (support)
+  - [x] `DashProviders` component (`lib/dash-providers.tsx`) with `agent="dash"`
+  - [x] CopilotSidebar: defaultOpen, "Dash Analytics" branding
+- [x] Frontend route groups:
+  - [x] `(support)/` — CopilotKit Providers (support agent)
+  - [x] `(dash)/` — DashProviders (dash agent)
+  - [x] `(dash)/dash/page.tsx` — landing page with quick prompt suggestions
+- [x] Removed old `/api/dash` SSE proxy route + custom chat UI
+- [x] Both services built and deployed (19 containers)
+
+**Коммиты:**
+- `45b0cb9` Phase 8.5: Dash analytics agent + CopilotKit Generative UI
+
+---
+
 ## Phase 9: AI Ops & Continuous Learning
 
 **См. документацию:**
