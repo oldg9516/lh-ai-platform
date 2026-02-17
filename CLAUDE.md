@@ -8,7 +8,7 @@ AI-powered live chat platform for Lev Haolam customer support. Replaces email-on
 
 **Stack:** Agno AgentOS (Python 3.12) + CopilotKit/AG-UI (Next.js 16) + Chatwoot (Omnichannel) + Langfuse (Observability & Eval) + PostgreSQL (Supabase) + Pinecone + Docker Compose
 
-**Current Status:** Phase 9.1 complete (dual-track learning: customer memory via Agno LM + correction pipeline). Phase 8 complete (specialist agents + QA agent with retry loop + Dash analytics agent). 19 containers, full pipeline working end-to-end via Chatwoot widget, email, CopilotKit chat, and Dash analytics. See `PROGRESS.md` for phase tracking.
+**Current Status:** Phase 9.2 complete (eval-driven instruction updates: pattern detection → LLM suggestion → admin review → auto-deploy into agent instructions). Phase 9.1 complete (dual-track learning). Phase 8 complete (specialist agents + QA agent + Dash analytics). 19 containers, full pipeline working end-to-end via Chatwoot widget, email, CopilotKit chat, and Dash analytics. See `PROGRESS.md` for phase tracking.
 
 ## Commands
 
@@ -52,7 +52,7 @@ docker compose exec dash python scripts/load_knowledge.py
 
 **Run tests:**
 ```bash
-docker compose exec ai-engine pytest tests/ -v                                    # all tests (215+)
+docker compose exec ai-engine pytest tests/ -v                                    # all tests (330+)
 docker compose exec ai-engine pytest tests/ -v --ignore=tests/test_pipeline.py    # unit only (fast)
 docker compose exec ai-engine pytest tests/test_e2e_multiturn.py -v              # E2E multi-turn
 docker compose exec ai-engine pytest tests/test_context_builder.py -v            # context builder
@@ -299,6 +299,28 @@ Self-learning data agent based on [agno-agi/dash](https://github.com/agno-agi/da
 
 **New DB tables:** `correction_patterns`, `instruction_updates`
 
+### Eval-Driven Instruction Updates (Phase 9.2)
+
+Closes the learning loop: recurring corrections auto-detected → LLM generates instruction fix → admin reviews → deployed into live agent instructions.
+
+**Pipeline:** `learning/pattern_detector.py`
+1. `detect_recurring_patterns()` — groups `correction_patterns` by (category, correction_type), threshold: 3+ in 7 days
+2. `suggest_instruction_fix()` — GPT-5-mini generates `InstructionFix(issue_pattern, suggested_fix)` from examples
+3. `run_pattern_analysis()` — orchestrates detect → suggest → save to `instruction_updates`
+
+**Admin API** (`api/learning_api.py`, prefix `/api/learning`):
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/instruction-updates` | List (optional `?status=&category=`) |
+| GET | `/instruction-updates/{id}` | Get single with examples |
+| POST | `/instruction-updates/{id}/approve` | pending → approved |
+| POST | `/instruction-updates/{id}/reject` | pending/approved → rejected |
+| POST | `/instruction-updates/{id}/deploy` | approved → deployed |
+| POST | `/instruction-updates/analyze` | Trigger pattern analysis on demand |
+
+**Deployment into instructions:** `agents/instructions.py` → `load_instructions()` appends deployed fixes as `"DEPLOYED INSTRUCTION IMPROVEMENTS"` block at the end of agent instructions. Auto-threshold check in `learning/feedback.py` logs when pattern threshold is reached after each correction save.
+
 ### Feature Flags
 
 All flags default to OFF for full backward compatibility.
@@ -309,6 +331,8 @@ All flags default to OFF for full backward compatibility.
 | `LEARNING_ENABLED` | false | Agno Learning Machine — customer memory between sessions |
 | `LEARNING_FEW_SHOT_ENABLED` | false | Few-shot correction injection into agent instructions |
 | `USE_MOCK_APIS` | true | Mock external APIs for development/demo |
+| `PATTERN_MIN_FREQUENCY` | 3 | Min corrections to trigger instruction update suggestion |
+| `PATTERN_WINDOW_DAYS` | 7 | Lookback window (days) for pattern detection |
 
 ## Critical Safety Rules (NEVER VIOLATE)
 
@@ -349,6 +373,7 @@ from mock_apis.factory import APIFactory
 from chatwoot.client import ChatwootClient
 from learning.feedback import save_correction, classify_correction
 from learning.few_shot import build_few_shot_instructions
+from learning.pattern_detector import detect_recurring_patterns, run_pattern_analysis
 ```
 
 ### Action Tools
