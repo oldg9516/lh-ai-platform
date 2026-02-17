@@ -732,12 +732,29 @@ Replaces custom analytics service (Phase 5) with Agno Dash self-learning data ag
 | `LEARNING_ENABLED` | false | Agno Learning Machine (customer memory между сессиями) |
 | `LEARNING_FEW_SHOT_ENABLED` | false | Few-shot correction injection в instructions |
 | `LEARNING_DB_URL` | "" | Direct PostgreSQL URL для Agno LM |
+| `PATTERN_MIN_FREQUENCY` | 3 | Min corrections to trigger instruction update suggestion |
+| `PATTERN_WINDOW_DAYS` | 7 | Lookback window (days) for pattern detection |
 
-### Phase 9.2: Eval-Driven Instruction Updates (TODO)
-- [ ] Auto-detection recurring correction patterns (3+ times per category per week)
-- [ ] `instruction_updates` table population: suggested fixes from pattern analysis
-- [ ] Admin review workflow: pending → approved → deployed
-- [ ] Auto-update `ai_answerer_instructions` upon approval
+### Phase 9.2: Eval-Driven Instruction Updates ✅
+- [x] `learning/pattern_detector.py`: detect recurring correction patterns (3+ per category/type in 7-day window)
+- [x] `pattern_detector.suggest_instruction_fix()`: GPT-5-mini generates `InstructionFix(issue_pattern, suggested_fix)` from examples
+- [x] `pattern_detector.run_pattern_analysis()`: orchestrates detect → suggest → save to `instruction_updates`
+- [x] `database/queries.py`: 5 CRUD functions for `instruction_updates` (get_instruction_updates, get_instruction_update, save_instruction_update, update_instruction_status, get_deployed_updates)
+- [x] `api/learning_api.py`: 6 admin endpoints — list, get, approve, reject, deploy, analyze
+- [x] `agents/instructions.py`: deployed fixes injected as "DEPLOYED INSTRUCTION IMPROVEMENTS" block
+- [x] `learning/feedback.py`: threshold check after correction save (`_check_pattern_threshold`)
+- [x] `config.py`: `pattern_min_frequency=3`, `pattern_window_days=7`
+- [x] Tests: 49 new tests (test_pattern_detector.py, test_learning_api.py, test_learning_integration.py additions)
+
+#### Admin API Endpoints (prefix: `/api/learning`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/instruction-updates` | List updates (optional ?status=&category=) |
+| GET | `/instruction-updates/{id}` | Get single update with examples |
+| POST | `/instruction-updates/{id}/approve` | pending → approved |
+| POST | `/instruction-updates/{id}/reject` | pending/approved → rejected |
+| POST | `/instruction-updates/{id}/deploy` | approved → deployed |
+| POST | `/instruction-updates/analyze` | Trigger pattern analysis on demand |
 
 ### AI Ops Dashboard (TODO)
 - [ ] services/analytics/ai_ops.py:
