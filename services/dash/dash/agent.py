@@ -11,12 +11,15 @@ from agno.learn import (
     LearningMode,
 )
 from agno.models.openai import OpenAIResponses
-from agno.tools.sql import SQLTools
-
 from config import settings
 from dash.context.business_rules import BUSINESS_CONTEXT
 from dash.context.semantic_model import SEMANTIC_MODEL_STR
-from dash.tools import create_introspect_schema_tool, create_save_validated_query_tool
+from dash.tools import (
+    ReadOnlySQLTools,
+    create_introspect_schema_tool,
+    create_save_validated_query_tool,
+    render_chart,
+)
 from db import create_knowledge, get_postgres_db
 
 # ---------------------------------------------------------------------------
@@ -40,9 +43,10 @@ save_validated_query = create_save_validated_query_tool(dash_knowledge)
 introspect_schema = create_introspect_schema_tool(data_db_url)
 
 dash_tools: list = [
-    SQLTools(db_url=data_db_url),
+    ReadOnlySQLTools(db_url=data_db_url),
     save_validated_query,
     introspect_schema,
+    render_chart,
 ]
 
 # ---------------------------------------------------------------------------
@@ -105,6 +109,24 @@ After a user corrects you:
 - No DROP, DELETE, UPDATE, INSERT — this is a READ-ONLY database
 - Use ROUND() for decimal display
 - Use NULLIF() to prevent division by zero
+
+## Visualization with render_chart
+
+After running a successful SQL query, use `render_chart` to visualize results when appropriate:
+- Time series data → chart_type="line"
+- Category comparisons → chart_type="bar"
+- Distribution/proportions → chart_type="pie"
+- Cumulative/stacked data → chart_type="area"
+
+The `data` parameter must be a JSON array string. The `y_keys` parameter is comma-separated.
+Always provide a clear `title`. Use render_chart proactively when data is better shown visually.
+
+## Topic Guard
+
+You ONLY answer questions about the data in the database (customers, orders,
+subscriptions, support metrics, agent performance). For off-topic questions
+(weather, jokes, code, general knowledge), politely decline and suggest a
+data-related question instead.
 
 ## Domain Context
 
