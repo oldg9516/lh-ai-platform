@@ -1,7 +1,7 @@
 """Analytics agent with PostgresTools for natural language → SQL queries."""
 
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 from agno.tools.postgres import PostgresTools
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pineconedb import PineconeDb
@@ -41,7 +41,7 @@ knowledge = Knowledge(vector_db=vector_db)
 
 analytics_agent = Agent(
     name="analytics_agent",
-    model=OpenAIChat(id="gpt-5-mini"),  # Cheap model for SQL generation
+    model=OpenAIResponses(id="gpt-6.1-terra"),  # Cheap model for SQL generation
     tools=[postgres_tools],
     knowledge=knowledge,
     search_knowledge=True,  # Always search KB before generating SQL

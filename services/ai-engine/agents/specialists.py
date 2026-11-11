@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import structlog
 
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIChat, OpenAIResponses
 
 from agents.config import CATEGORY_CONFIG
 from agents.instructions import load_instructions
@@ -31,8 +31,8 @@ class SpecialistConfig:
     categories: list[str] = field(default_factory=list)
     tools: list[str] = field(default_factory=list)
     pinecone_namespaces: list[str] = field(default_factory=list)
-    model: str = "gpt-5.1"
-    model_provider: str = "openai_chat"
+    model: str = "gpt-6.1-sol"
+    model_provider: str = "openai_responses"
     reasoning_effort: str | None = None
 
 
@@ -206,7 +206,11 @@ async def create_specialist_agent(
     model_kwargs: dict = {"id": spec.model}
     if spec.reasoning_effort:
         model_kwargs["reasoning_effort"] = spec.reasoning_effort
-    model = OpenAIChat(**model_kwargs)
+    # GPT-6.x rejects function tools in Chat Completions -> Responses API.
+    if spec.model_provider == "openai_responses":
+        model = OpenAIResponses(**model_kwargs)
+    else:
+        model = OpenAIChat(**model_kwargs)
 
     # Build agent kwargs
     agent_kwargs: dict = {

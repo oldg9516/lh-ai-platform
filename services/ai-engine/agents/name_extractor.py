@@ -64,7 +64,7 @@ async def extract_customer_name(
     try:
         agent = Agent(
             name="Name Extractor",
-            model=OpenAIChat(id="gpt-5-mini"),
+            model=OpenAIChat(id="gpt-6.1-terra"),
             instructions=EXTRACTOR_INSTRUCTIONS,
             output_schema=NameOutput,
             markdown=False,

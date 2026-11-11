@@ -8,7 +8,7 @@ tailored to its specific support category.
 import structlog
 
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIChat, OpenAIResponses
 from agno.models.anthropic import Claude
 
 from agents.config import CATEGORY_CONFIG, CategoryConfig
@@ -27,12 +27,16 @@ def _resolve_model(config: CategoryConfig):
         config: Category configuration with model and provider info.
 
     Returns:
-        Agno model instance (OpenAIChat or Claude).
+        Agno model instance (OpenAIResponses, OpenAIChat or Claude).
     """
     if config.model_provider in ("openai_chat", "openai_responses"):
         kwargs: dict = {"id": config.model}
         if config.reasoning_effort:
             kwargs["reasoning_effort"] = config.reasoning_effort
+        # GPT-6.x reasoning models reject function tools in /v1/chat/completions,
+        # so tool-using agents must go through the Responses API.
+        if config.model_provider == "openai_responses":
+            return OpenAIResponses(**kwargs)
         return OpenAIChat(**kwargs)
     elif config.model_provider == "anthropic":
         return Claude(id=config.model)

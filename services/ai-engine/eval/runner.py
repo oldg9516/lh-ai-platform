@@ -110,7 +110,7 @@ def create_judge() -> Agent:
     """Create LLM judge agent for evaluating responses."""
     return Agent(
         name="Eval Judge",
-        model=OpenAIChat(id="gpt-5.1"),
+        model=OpenAIChat(id="gpt-6.1-sol"),
         instructions=JUDGE_INSTRUCTIONS,
         output_schema=EvalScores,
         markdown=False,

@@ -139,7 +139,7 @@ async def suggest_instruction_fix(
 
     agent = Agent(
         name="Instruction Fix Suggester",
-        model=OpenAIChat(id="gpt-5-mini"),
+        model=OpenAIChat(id="gpt-6.1-terra"),
         instructions=[
             "You analyze recurring corrections to AI customer support responses and suggest instruction fixes.",
             "Given a category, correction type, and examples of corrections, you must:",

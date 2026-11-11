@@ -25,7 +25,7 @@
     {
       "name": "model_name",
       "type": "text",
-      "description": "LLM model used: gpt-5.1, gpt-5-mini, claude-sonnet-4-5, etc."
+      "description": "LLM model used: gpt-6.1-sol, gpt-6.1-terra, gpt-6-luna, claude-sonnet-4-5, etc."
     },
     {
       "name": "total_tokens",

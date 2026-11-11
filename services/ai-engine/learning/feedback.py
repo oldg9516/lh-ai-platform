@@ -117,7 +117,7 @@ async def classify_correction(
 
     classifier = Agent(
         name="Correction Classifier",
-        model=OpenAIChat(id="gpt-5-mini"),
+        model=OpenAIChat(id="gpt-6.1-terra"),
         instructions=[
             "You classify human corrections of AI customer support responses.",
             "Compare the original AI response with the human-edited version.",

@@ -58,7 +58,7 @@ class TestPipelineResultTeamMetadata:
             category="shipping_or_delivery_question",
             decision="send",
             confidence="high",
-            metadata={"model_used": "gpt-5.1"},
+            metadata={"model_used": "gpt-6.1-sol"},
         )
         assert "team_mode" not in result.metadata
 
@@ -70,7 +70,7 @@ class TestPipelineResultTeamMetadata:
             decision="send",
             confidence="high",
             metadata={
-                "model_used": "gpt-5.1",
+                "model_used": "gpt-6.1-sol",
                 "team_mode": True,
                 "specialist": "shipping",
                 "attempts": 1,

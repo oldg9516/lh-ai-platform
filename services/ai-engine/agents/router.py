@@ -87,7 +87,7 @@ def create_router_agent() -> Agent:
     """Create the Router Agent for message classification."""
     return Agent(
         name="Router Agent",
-        model=OpenAIChat(id="gpt-5.1"),
+        model=OpenAIChat(id="gpt-6.1-sol"),
         instructions=ROUTER_INSTRUCTIONS,
         output_schema=RouterOutput,
         markdown=False,

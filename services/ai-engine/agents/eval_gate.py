@@ -184,7 +184,7 @@ async def evaluate_response(
     try:
         agent = Agent(
             name="Eval Gate",
-            model=OpenAIChat(id="gpt-5.1"),
+            model=OpenAIChat(id="gpt-6.1-sol"),
             instructions=EVAL_GATE_INSTRUCTIONS,
             output_schema=EvalGateOutput,
             markdown=False,

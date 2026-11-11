@@ -524,6 +524,10 @@ async def _run_agent_buffered(
 ) -> AgentBufferedResult:
     """Run OpenAI with tool-call loop, collecting full response in buffer.
 
+    Uses the Responses API: GPT-6.x reasoning models reject function tools
+    in /v1/chat/completions. The response is buffered anyway (eval gate runs
+    on the full text), so the call is non-streaming.
+
     Returns AgentBufferedResult with text, HITL events, and tool call info.
     HITL tools are NOT executed — their AG-UI events are collected for later emission.
     Read-only tools ARE executed server-side, with results fed back to OpenAI.
@@ -532,23 +536,21 @@ async def _run_agent_buffered(
     client = _get_openai_client()
     max_iterations = 5
 
-    openai_messages: list[dict] = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_content},
-    ]
+    response_tools = [_to_responses_tool(t) for t in openai_tools]
+    input_items: list[dict] = [{"role": "user", "content": user_content}]
 
     for iteration in range(max_iterations):
         kwargs: dict = {
             "model": model,
-            "messages": openai_messages,
-            "stream": True,
+            "instructions": system_prompt,
+            "input": input_items,
         }
-        if openai_tools:
-            kwargs["tools"] = openai_tools
+        if response_tools:
+            kwargs["tools"] = response_tools
 
         try:
             response = await asyncio.wait_for(
-                client.chat.completions.create(**kwargs),
+                client.responses.create(**kwargs),
                 timeout=OPENAI_STREAM_TIMEOUT_S,
             )
         except asyncio.TimeoutError:
@@ -556,59 +558,24 @@ async def _run_agent_buffered(
             result.text = "I'm sorry, the request timed out. Please try again."
             return result
 
-        accumulated_text = ""
-        accumulated_tool_calls: dict[int, dict] = {}
-
-        async for chunk in response:
-            if not chunk.choices:
-                continue
-
-            choice = chunk.choices[0]
-            delta = choice.delta
-
-            if delta and delta.content:
-                accumulated_text += delta.content
-
-            if delta and delta.tool_calls:
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    if idx not in accumulated_tool_calls:
-                        accumulated_tool_calls[idx] = {
-                            "id": tc.id or str(uuid4()),
-                            "name": "",
-                            "args": "",
-                        }
-                    if tc.function and tc.function.name:
-                        accumulated_tool_calls[idx]["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        accumulated_tool_calls[idx]["args"] += tc.function.arguments
-
-        result.text += accumulated_text
+        function_calls = [
+            item for item in (response.output or [])
+            if getattr(item, "type", None) == "function_call"
+        ]
+        result.text += response.output_text or ""
 
         # No tool calls -> done
-        if not accumulated_tool_calls:
+        if not function_calls:
             break
 
         # Process tool calls
         hitl_emitted = False
         read_only_results = []
-        assistant_tool_calls = []
 
-        for idx in sorted(accumulated_tool_calls.keys()):
-            tc = accumulated_tool_calls[idx]
-            assistant_tool_calls.append({
-                "id": tc["id"],
-                "type": "function",
-                "function": {
-                    "name": tc["name"],
-                    "arguments": tc["args"],
-                },
-            })
-
-        for idx in sorted(accumulated_tool_calls.keys()):
-            tc = accumulated_tool_calls[idx]
-            tool_name = tc["name"]
-            tool_args_str = tc["args"]
+        for fc in function_calls:
+            tool_name = fc.name
+            tool_args_str = fc.arguments or ""
+            call_id = fc.call_id or str(uuid4())
 
             try:
                 tool_args = json_lib.loads(tool_args_str) if tool_args_str else {}
@@ -627,14 +594,14 @@ async def _run_agent_buffered(
 
             tool_events = [
                 ToolCallStartEvent(
-                    toolCallId=tc["id"],
+                    toolCallId=call_id,
                     toolCallName=tool_name,
                 ),
                 ToolCallArgsEvent(
-                    toolCallId=tc["id"],
+                    toolCallId=call_id,
                     delta=tool_args_str,
                 ),
-                ToolCallEndEvent(toolCallId=tc["id"]),
+                ToolCallEndEvent(toolCallId=call_id),
             ]
 
             if tool_name in HITL_TOOL_NAMES:
@@ -649,25 +616,33 @@ async def _run_agent_buffered(
             else:
                 # Read-only tool: execute server-side
                 tool_result = await _execute_tool(tool_name, tool_args)
-                read_only_results.append((tc["id"], tool_name, tool_result))
+                read_only_results.append((call_id, tool_name, tool_result))
 
         if hitl_emitted:
             break
 
-        # Feed read-only results back to OpenAI
+        # Feed read-only results back to OpenAI: the model's output items
+        # (reasoning + function calls) first, then one output per call.
         if read_only_results:
-            openai_messages.append({
-                "role": "assistant",
-                "tool_calls": assistant_tool_calls,
-            })
-            for tool_call_id, tool_name, tool_result in read_only_results:
-                openai_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "content": tool_result,
+            input_items.extend(
+                item.model_dump(exclude_none=True) for item in response.output
+            )
+            for call_id, _tool_name, tool_result in read_only_results:
+                input_items.append({
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": tool_result,
                 })
 
     return result
+
+
+def _to_responses_tool(tool: dict) -> dict:
+    """Convert a Chat Completions tool schema to the Responses API shape."""
+    fn = tool.get("function")
+    if tool.get("type") != "function" or not fn:
+        return tool
+    return {"type": "function", **fn}
 
 
 # --- Persistence ---
@@ -1376,7 +1351,7 @@ async def _tool_result_stream(messages: list, thread_id: str) -> AsyncGenerator[
         try:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
-                    model="gpt-4.1-mini",
+                    model="gpt-6-luna",
                     messages=openai_messages,
                     stream=True,
                 ),
@@ -1414,7 +1389,7 @@ async def _tool_result_stream(messages: list, thread_id: str) -> AsyncGenerator[
                 "session_id": session_id,
                 "role": "assistant",
                 "content": buffered_text,
-                "model_used": "gpt-4.1-mini",
+                "model_used": "gpt-6-luna",
                 "reasoning_effort": None,
                 "processing_time_ms": None,
             })

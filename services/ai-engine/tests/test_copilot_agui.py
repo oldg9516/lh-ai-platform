@@ -31,88 +31,35 @@ def _mock_router_output(category="gratitude", email=None):
 
 
 def _mock_openai_text_stream(text="Hello from agent"):
-    """Create a mock OpenAI streaming response with text content."""
-    chunks = []
+    """Create a mock OpenAI Responses API result with text output."""
+    message = MagicMock()
+    message.type = "message"
+    message.model_dump.return_value = {"type": "message", "role": "assistant"}
 
-    # First chunk with text
-    for word in text.split():
-        chunk = MagicMock()
-        choice = MagicMock()
-        choice.delta = MagicMock()
-        choice.delta.content = word + " "
-        choice.delta.tool_calls = None
-        choice.finish_reason = None
-        chunk.choices = [choice]
-        chunks.append(chunk)
-
-    # Final chunk
-    final = MagicMock()
-    final_choice = MagicMock()
-    final_choice.delta = MagicMock()
-    final_choice.delta.content = None
-    final_choice.delta.tool_calls = None
-    final_choice.finish_reason = "stop"
-    final.choices = [final_choice]
-    chunks.append(final)
-
-    async def async_iter():
-        for c in chunks:
-            yield c
-
-    return async_iter()
+    response = MagicMock()
+    response.output = [message]
+    response.output_text = text
+    return response
 
 
 def _mock_openai_tool_call_stream(tool_name="pause_subscription", tool_args='{"customer_email":"test@test.com","duration_months":2}'):
-    """Create a mock OpenAI streaming response with a tool call."""
-    chunks = []
+    """Create a mock OpenAI Responses API result with a function call."""
+    call = MagicMock()
+    call.type = "function_call"
+    call.name = tool_name
+    call.arguments = tool_args
+    call.call_id = "call_test_123"
+    call.model_dump.return_value = {
+        "type": "function_call",
+        "name": tool_name,
+        "arguments": tool_args,
+        "call_id": "call_test_123",
+    }
 
-    # Tool call start chunk
-    tc_start = MagicMock()
-    tc_start_choice = MagicMock()
-    tc_start_choice.delta = MagicMock()
-    tc_start_choice.delta.content = None
-    tc_mock = MagicMock()
-    tc_mock.index = 0
-    tc_mock.id = "call_test_123"
-    tc_mock.function = MagicMock()
-    tc_mock.function.name = tool_name
-    tc_mock.function.arguments = ""
-    tc_start_choice.delta.tool_calls = [tc_mock]
-    tc_start_choice.finish_reason = None
-    tc_start.choices = [tc_start_choice]
-    chunks.append(tc_start)
-
-    # Tool call args chunk
-    tc_args = MagicMock()
-    tc_args_choice = MagicMock()
-    tc_args_choice.delta = MagicMock()
-    tc_args_choice.delta.content = None
-    tc_args_mock = MagicMock()
-    tc_args_mock.index = 0
-    tc_args_mock.id = None
-    tc_args_mock.function = MagicMock()
-    tc_args_mock.function.name = None
-    tc_args_mock.function.arguments = tool_args
-    tc_args_choice.delta.tool_calls = [tc_args_mock]
-    tc_args_choice.finish_reason = None
-    tc_args.choices = [tc_args_choice]
-    chunks.append(tc_args)
-
-    # Finish chunk
-    final = MagicMock()
-    final_choice = MagicMock()
-    final_choice.delta = MagicMock()
-    final_choice.delta.content = None
-    final_choice.delta.tool_calls = None
-    final_choice.finish_reason = "tool_calls"
-    final.choices = [final_choice]
-    chunks.append(final)
-
-    async def async_iter():
-        for c in chunks:
-            yield c
-
-    return async_iter()
+    response = MagicMock()
+    response.output = [call]
+    response.output_text = ""
+    return response
 
 
 # --- Tests ---
@@ -144,7 +91,7 @@ class TestCopilotStream:
         mock_classify.return_value = _mock_router_output("gratitude")
 
         mock_openai = AsyncMock()
-        mock_openai.chat.completions.create.return_value = _mock_openai_text_stream("Thank you for your message!")
+        mock_openai.responses.create.return_value = _mock_openai_text_stream("Thank you for your message!")
         mock_client.return_value = mock_openai
 
         request_data = {
@@ -174,7 +121,7 @@ class TestCopilotStream:
         mock_classify.return_value = _mock_router_output("gratitude")
 
         mock_openai = AsyncMock()
-        mock_openai.chat.completions.create.return_value = _mock_openai_text_stream("Test response content")
+        mock_openai.responses.create.return_value = _mock_openai_text_stream("Test response content")
         mock_client.return_value = mock_openai
 
         request_data = {
@@ -214,7 +161,7 @@ class TestCopilotStream:
         )
 
         mock_openai = AsyncMock()
-        mock_openai.chat.completions.create.return_value = _mock_openai_tool_call_stream(
+        mock_openai.responses.create.return_value = _mock_openai_tool_call_stream(
             "pause_subscription",
             '{"customer_email":"test@example.com","duration_months":2}',
         )
@@ -242,7 +189,7 @@ class TestCopilotStream:
         mock_classify.return_value = _mock_router_output("gratitude")
 
         mock_openai = AsyncMock()
-        mock_openai.chat.completions.create.side_effect = Exception("OpenAI API error")
+        mock_openai.responses.create.side_effect = Exception("OpenAI API error")
         mock_client.return_value = mock_openai
 
         request_data = {
@@ -271,7 +218,7 @@ class TestAGUIEventFormat:
         mock_classify.return_value = _mock_router_output("gratitude")
 
         mock_openai = AsyncMock()
-        mock_openai.chat.completions.create.return_value = _mock_openai_text_stream("Hello")
+        mock_openai.responses.create.return_value = _mock_openai_text_stream("Hello")
         mock_client.return_value = mock_openai
 
         request_data = {
@@ -295,7 +242,7 @@ class TestAGUIEventFormat:
         mock_classify.return_value = _mock_router_output("gratitude")
 
         mock_openai = AsyncMock()
-        mock_openai.chat.completions.create.return_value = _mock_openai_text_stream("Test")
+        mock_openai.responses.create.return_value = _mock_openai_text_stream("Test")
         mock_client.return_value = mock_openai
 
         request_data = {
@@ -334,7 +281,7 @@ class TestHITLToolCalls:
         )
 
         mock_openai = AsyncMock()
-        mock_openai.chat.completions.create.return_value = _mock_openai_tool_call_stream(
+        mock_openai.responses.create.return_value = _mock_openai_tool_call_stream(
             "skip_month",
             '{"customer_email":"user@test.com","month":"next"}',
         )
@@ -368,7 +315,7 @@ class TestHITLToolCalls:
 
         # First call returns tool call, second call returns text
         mock_openai = AsyncMock()
-        mock_openai.chat.completions.create.side_effect = [
+        mock_openai.responses.create.side_effect = [
             _mock_openai_tool_call_stream(
                 "get_subscription",
                 '{"customer_email":"user@test.com"}',

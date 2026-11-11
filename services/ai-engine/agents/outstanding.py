@@ -8,7 +8,7 @@ similarity search against the outstanding-cases namespace.
 from pydantic import BaseModel, Field
 
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 
 from knowledge.pinecone_client import create_knowledge
 from database.queries import get_instructions, get_global_rules
@@ -94,7 +94,7 @@ def create_outstanding_agent(category: str) -> Agent:
 
     agent_kwargs = {
         "name": "Outstanding Detector",
-        "model": OpenAIChat(id="gpt-5-mini"),
+        "model": OpenAIResponses(id="gpt-6.1-terra"),
         "instructions": instructions,
         "output_schema": OutstandingOutput,
         "markdown": False,
