@@ -178,7 +178,7 @@ async def qa_evaluate(
     try:
         agent = Agent(
             name="QA Agent",
-            model=OpenAIChat(id="gpt-6.1-sol"),
+            model=OpenAIChat(id="gpt-6.2-sol"),
             instructions=QA_INSTRUCTIONS,
             output_schema=QAOutput,
             markdown=False,

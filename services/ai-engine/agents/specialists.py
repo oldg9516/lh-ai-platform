@@ -31,7 +31,7 @@ class SpecialistConfig:
     categories: list[str] = field(default_factory=list)
     tools: list[str] = field(default_factory=list)
     pinecone_namespaces: list[str] = field(default_factory=list)
-    model: str = "gpt-6.1-sol"
+    model: str = "gpt-6.2-sol"
     model_provider: str = "openai_responses"
     reasoning_effort: str | None = None
 
