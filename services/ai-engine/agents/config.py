@@ -21,7 +21,7 @@ class CategoryConfig:
 
 CATEGORY_CONFIG: dict[str, CategoryConfig] = {
     "shipping_or_delivery_question": CategoryConfig(
-        model="gpt-6.1-sol",
+        model="gpt-6.2-sol",
         model_provider="openai_responses",
         reasoning_effort=None,
         tools=["get_subscription", "track_package"],
@@ -29,7 +29,7 @@ CATEGORY_CONFIG: dict[str, CategoryConfig] = {
         auto_send_phase=2,
     ),
     "payment_question": CategoryConfig(
-        model="gpt-6.1-sol",
+        model="gpt-6.2-sol",
         model_provider="openai_responses",
         reasoning_effort="medium",
         tools=["get_subscription", "get_payment_history"],
@@ -37,7 +37,7 @@ CATEGORY_CONFIG: dict[str, CategoryConfig] = {
         auto_send_phase=3,
     ),
     "frequency_change_request": CategoryConfig(
-        model="gpt-6.1-sol",
+        model="gpt-6.2-sol",
         model_provider="openai_responses",
         reasoning_effort=None,
         tools=["get_subscription", "change_frequency"],
@@ -45,7 +45,7 @@ CATEGORY_CONFIG: dict[str, CategoryConfig] = {
         auto_send_phase=2,
     ),
     "skip_or_pause_request": CategoryConfig(
-        model="gpt-6.1-sol",
+        model="gpt-6.2-sol",
         model_provider="openai_responses",
         reasoning_effort=None,
         tools=["get_subscription", "skip_month", "pause_subscription"],
@@ -53,7 +53,7 @@ CATEGORY_CONFIG: dict[str, CategoryConfig] = {
         auto_send_phase=2,
     ),
     "recipient_or_address_change": CategoryConfig(
-        model="gpt-6.1-sol",
+        model="gpt-6.2-sol",
         model_provider="openai_responses",
         reasoning_effort=None,
         tools=["get_subscription", "change_address"],
@@ -61,7 +61,7 @@ CATEGORY_CONFIG: dict[str, CategoryConfig] = {
         auto_send_phase=2,
     ),
     "customization_request": CategoryConfig(
-        model="gpt-6.1-sol",
+        model="gpt-6.2-sol",
         model_provider="openai_responses",
         reasoning_effort=None,
         tools=["get_subscription", "get_box_contents"],
@@ -69,7 +69,7 @@ CATEGORY_CONFIG: dict[str, CategoryConfig] = {
         auto_send_phase=2,
     ),
     "damaged_or_leaking_item_report": CategoryConfig(
-        model="gpt-6.1-sol",
+        model="gpt-6.2-sol",
         model_provider="openai_responses",
         reasoning_effort=None,
         tools=["get_subscription", "create_damage_claim", "request_photos"],
@@ -77,7 +77,7 @@ CATEGORY_CONFIG: dict[str, CategoryConfig] = {
         auto_send_phase=3,
     ),
     "gratitude": CategoryConfig(
-        model="gpt-6.1-sol",
+        model="gpt-6.2-sol",
         model_provider="openai_responses",
         reasoning_effort=None,
         tools=[],
@@ -85,7 +85,7 @@ CATEGORY_CONFIG: dict[str, CategoryConfig] = {
         auto_send_phase=1,
     ),
     "retention_primary_request": CategoryConfig(
-        model="gpt-6.1-sol",
+        model="gpt-6.2-sol",
         model_provider="openai_responses",
         reasoning_effort="medium",
         tools=["get_subscription", "generate_cancel_link", "get_customer_history"],
@@ -93,7 +93,7 @@ CATEGORY_CONFIG: dict[str, CategoryConfig] = {
         auto_send_phase=4,
     ),
     "retention_repeated_request": CategoryConfig(
-        model="gpt-6.1-sol",
+        model="gpt-6.2-sol",
         model_provider="openai_responses",
         reasoning_effort="medium",
         tools=["get_subscription", "generate_cancel_link"],

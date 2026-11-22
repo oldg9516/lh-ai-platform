@@ -19,7 +19,7 @@
     {"name": "session_id", "type": "text", "description": "FK to chat_sessions.session_id (TEXT)"},
     {"name": "role", "type": "text", "description": "user or assistant"},
     {"name": "content", "type": "text", "description": "Message text content"},
-    {"name": "model_used", "type": "text", "description": "LLM model used (e.g., gpt-6.1-sol)"},
+    {"name": "model_used", "type": "text", "description": "LLM model used (e.g., gpt-6.2-sol)"},
     {"name": "reasoning_effort", "type": "text", "description": "Reasoning effort level"},
     {"name": "tools_used", "type": "jsonb", "description": "Array of tool names used"},
     {"name": "processing_time_ms", "type": "integer", "description": "Processing time in ms"},

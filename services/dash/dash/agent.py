@@ -154,7 +154,7 @@ damaged_or_leaking_item_report, gratitude, retention_primary_request, retention_
 dash = Agent(
     id="dash",
     name="Dash",
-    model=OpenAIResponses(id="gpt-6.1-sol"),
+    model=OpenAIResponses(id="gpt-6.2-sol"),
     db=agent_db,
     instructions=INSTRUCTIONS,
     knowledge=dash_knowledge,
